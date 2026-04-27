@@ -29,6 +29,29 @@ body,
   margin-bottom: 1.5rem;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dataset-select {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 0.875rem;
+  color: #333;
+  cursor: pointer;
+  max-width: 260px;
+}
+
+.dataset-select:focus {
+  outline: none;
+  border-color: #3a7cbf;
+  box-shadow: 0 0 0 2px rgba(58, 124, 191, 0.15);
+}
+
 .app header h1 {
   margin: 0 0 0.2rem;
   font-size: 1.4rem;
@@ -183,6 +206,11 @@ body,
   color: #888;
   padding: 1rem 0;
   font-style: italic;
+}
+
+.status-msg {
+  color: #888;
+  padding: 0.5rem 0;
 }
 
 .error {

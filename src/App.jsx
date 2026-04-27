@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { createDataSource } from "./data";
-import { config } from "./config";
+import { DATASETS } from "./datasets.js";
 import LightCurvePlot from "./components/LightCurvePlot.jsx";
 
 export default function App() {
+  const [dataset, setDataset] = useState(DATASETS[0]);
   const [info, setInfo] = useState(null);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
@@ -12,13 +13,21 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const ds = createDataSource();
+    setLoading(true);
+    setError(null);
+    setRows([]);
+    setInfo(null);
+    setSelectedIdx(null);
+
+    const ds = createDataSource(dataset);
     Promise.all([ds.getInfo(), ds.getRows({ offset: 0, length: 200 })])
       .then(([info, rows]) => {
         if (cancelled) return;
         setInfo(info);
         setRows(rows);
-        setSelectedIdx(Math.floor(Math.random() * rows.length));
+        if (rows.length > 0) {
+          setSelectedIdx(Math.floor(Math.random() * rows.length));
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -28,18 +37,16 @@ export default function App() {
         if (cancelled) return;
         setLoading(false);
       });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dataset]);
 
   const pickRandom = () =>
     setSelectedIdx(Math.floor(Math.random() * rows.length));
 
   const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
-
-  if (loading) return <div className="app"><p>Loading…</p></div>;
-  if (error) return <div className="app"><p className="error">Error: {error}</p></div>;
 
   return (
     <div className="app">
@@ -48,20 +55,41 @@ export default function App() {
           <div>
             <h1>StarEmbed Explorer</h1>
             <p className="meta">
-              Source: <code>{config.dataSource}</code>
-              {" · "}
-              {info?.numRows ?? rows.length} sources
-              {" · "}
-              g_PTF + R_PTF
+              {info
+                ? `${info.numRows ?? rows.length} sources · ${dataset.source === "hf" ? dataset.dataset : dataset.path}`
+                : " "}
             </p>
           </div>
-          <button className="random-btn" onClick={pickRandom}>
-            ⚄ Random star
-          </button>
+          <div className="header-controls">
+            {DATASETS.length > 1 && (
+              <select
+                className="dataset-select"
+                value={dataset.id}
+                onChange={(e) =>
+                  setDataset(DATASETS.find((d) => d.id === e.target.value))
+                }
+              >
+                {DATASETS.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              className="random-btn"
+              onClick={pickRandom}
+              disabled={rows.length === 0}
+            >
+              ⚄ Random star
+            </button>
+          </div>
         </div>
       </header>
 
-      {selectedRow && <SourceDetail row={selectedRow} />}
+      {loading && <p className="status-msg">Loading…</p>}
+      {error && <p className="error">Error: {error}</p>}
+      {!loading && !error && selectedRow && <SourceDetail row={selectedRow} />}
     </div>
   );
 }
