@@ -8,6 +8,12 @@ dist-ssr
 .env.local
 .env.*.local
 
+# Raw HF dataset (Arrow files) — too large for git, regenerate with export script
+/data/
+
+# Claude Code session files
+.claude/
+
 # Larger exported datasets — keep the small sample committed but
 # avoid checking in big exports. Uncomment if needed.
 # public/data/*.jsonl
