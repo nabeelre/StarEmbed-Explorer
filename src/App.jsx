@@ -67,16 +67,19 @@ export default function App() {
   };
 
   const handleDirChange = (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+    // Snapshot the FileList into an Array BEFORE resetting the input value.
+    // FileList is a live object — e.target.value = "" empties it in place,
+    // so any Array.from() call after the reset returns [].
+    const fileArray = Array.from(e.target.files);
     e.target.value = "";
+    if (fileArray.length === 0) return;
     const dirName =
-      files[0]?.webkitRelativePath?.split("/")[0] ?? files[0]?.name ?? "dataset";
+      fileArray[0]?.webkitRelativePath?.split("/")[0] ?? fileArray[0]?.name ?? "dataset";
     const descriptor = {
       id: `hf-disk::${dirName}`,
       label: dirName,
       source: "hf-disk",
-      files: Array.from(files),
+      files: fileArray,
     };
     setDatasets((prev) => {
       const without = prev.filter((d) => d.id !== descriptor.id);

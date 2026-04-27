@@ -11,12 +11,14 @@ import { tableFromIPC, DataType } from "apache-arrow";
 export class HFDiskDataSource extends DataSource {
   constructor(files) {
     super();
-    this._shards = Array.from(files)
+    const all = Array.from(files);
+    this._shards = all
       .filter((f) => f.name.endsWith(".arrow"))
       .sort((a, b) => a.name.localeCompare(b.name));
-    this._infoFile = Array.from(files).find((f) => f.name === "dataset_info.json");
+    this._infoFile = all.find((f) => f.name === "dataset_info.json");
     this.dirName =
-      files[0]?.webkitRelativePath?.split("/")[0] ?? files[0]?.name ?? "dataset";
+      all[0]?.webkitRelativePath?.split("/")[0] ?? all[0]?.name ?? "dataset";
+    this._allNames = all.map((f) => f.webkitRelativePath || f.name);
   }
 
   async getInfo() {
@@ -38,9 +40,11 @@ export class HFDiskDataSource extends DataSource {
 
   async getRows({ offset = 0, length = 100 } = {}) {
     if (this._shards.length === 0) {
+      const preview = this._allNames.slice(0, 8).join(", ") || "none";
       throw new Error(
         `No .arrow files found in "${this.dirName}". ` +
-          "Make sure you selected the directory containing the Arrow shards."
+          `Files received: ${preview}${this._allNames.length > 8 ? ", …" : ""}. ` +
+          "Select the directory that directly contains the .arrow shards."
       );
     }
 
