@@ -1,4 +1,4 @@
-# Time Series Explorer
+# StarEmbed Explorer (SEE)
 
 Static web UI for exploring a HuggingFace time-series dataset. Reads from a
 local JSONL file during development and from the HuggingFace Datasets Server
