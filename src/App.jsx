@@ -139,12 +139,7 @@ export default function App() {
       <header>
         <div className="header-row">
           <div>
-            <h1>StarEmbed Explorer</h1>
-            <p className="meta">
-              {info
-                ? `${totalRows.toLocaleString()} sources · ${dataset.source === "hf" ? dataset.dataset : (info.path ?? dataset.label)}`
-                : " "}
-            </p>
+            <h1>StarEmbed Explorer <span className="title-acronym">(SEE)</span></h1>
           </div>
           <div className="header-controls">
             <select
@@ -190,6 +185,7 @@ export default function App() {
       {summary && (
         <DatasetSummary
           summary={summary}
+          datasetLabel={dataset.source === "hf" ? dataset.dataset : (info?.path ?? dataset.label)}
           enabledClasses={enabledClasses}
           onToggle={toggleClass}
           onToggleMany={toggleMany}
@@ -205,7 +201,7 @@ export default function App() {
   );
 }
 
-function DatasetSummary({ summary, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
+function DatasetSummary({ summary, datasetLabel, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
   const { totalRows, classCounts, bands } = summary;
   const allEntries = Object.entries(classCounts);
   const top = allEntries.slice(0, 10);
@@ -219,6 +215,12 @@ function DatasetSummary({ summary, enabledClasses, onToggle, onToggleMany, onTog
 
   return (
     <div className="dataset-summary">
+      {datasetLabel && (
+        <div className="summary-dataset-block">
+          <span className="summary-dataset-label">Dataset</span>
+          <span className="summary-dataset-name mono">{datasetLabel}</span>
+        </div>
+      )}
       <div className="summary-top">
         <span className="summary-stat">
           <span className="summary-stat-value">{totalRows.toLocaleString()}</span>
