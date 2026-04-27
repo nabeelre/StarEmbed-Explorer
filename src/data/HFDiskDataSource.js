@@ -2,67 +2,56 @@ import { DataSource } from "./DataSource.js";
 import { tableFromIPC, DataType } from "apache-arrow";
 
 /**
- * Reads a HuggingFace dataset saved to disk (Arrow shard files) using the
- * browser File System Access API. Nothing is uploaded or transferred — files
- * are read locally by the browser directly from the directory the user picks.
+ * Reads a HuggingFace dataset saved to disk (Arrow shard files).
  *
- * Requires Chrome/Edge (showDirectoryPicker). Not available in Firefox/Safari.
+ * Constructed from the File[] provided by an <input type="file" webkitdirectory>
+ * element — works in Safari, Firefox, and Chrome. Nothing is uploaded or
+ * transferred; files are read locally by the browser.
  */
 export class HFDiskDataSource extends DataSource {
-  constructor(dirHandle) {
+  constructor(files) {
     super();
-    this.dirHandle = dirHandle;
-    this._shardHandles = null;
-  }
-
-  async _getShardHandles() {
-    if (this._shardHandles) return this._shardHandles;
-    const pairs = [];
-    for await (const [name, handle] of this.dirHandle.entries()) {
-      if (handle.kind === "file" && name.endsWith(".arrow")) {
-        pairs.push([name, handle]);
-      }
-    }
-    if (pairs.length === 0) {
-      throw new Error(
-        `No .arrow files found in "${this.dirHandle.name}". ` +
-          "Make sure you selected the directory containing the Arrow shards."
-      );
-    }
-    pairs.sort((a, b) => a[0].localeCompare(b[0]));
-    this._shardHandles = pairs.map(([, h]) => h);
-    return this._shardHandles;
+    this._shards = Array.from(files)
+      .filter((f) => f.name.endsWith(".arrow"))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    this._infoFile = Array.from(files).find((f) => f.name === "dataset_info.json");
+    this.dirName =
+      files[0]?.webkitRelativePath?.split("/")[0] ?? files[0]?.name ?? "dataset";
   }
 
   async getInfo() {
-    // Read dataset_info.json for schema/count without loading Arrow data
-    try {
-      const infoHandle = await this.dirHandle.getFileHandle("dataset_info.json");
-      const file = await infoHandle.getFile();
-      const json = JSON.parse(await file.text());
-      return {
-        source: "hf-disk",
-        path: this.dirHandle.name,
-        numRows: json.num_examples ?? null,
-        columns: json.features ? Object.keys(json.features) : [],
-      };
-    } catch {
-      return { source: "hf-disk", path: this.dirHandle.name };
+    if (this._infoFile) {
+      try {
+        const json = JSON.parse(await this._infoFile.text());
+        return {
+          source: "hf-disk",
+          path: this.dirName,
+          numRows: json.num_examples ?? null,
+          columns: json.features ? Object.keys(json.features) : [],
+        };
+      } catch {
+        // fall through
+      }
     }
+    return { source: "hf-disk", path: this.dirName };
   }
 
   async getRows({ offset = 0, length = 100 } = {}) {
-    const shards = await this._getShardHandles();
+    if (this._shards.length === 0) {
+      throw new Error(
+        `No .arrow files found in "${this.dirName}". ` +
+          "Make sure you selected the directory containing the Arrow shards."
+      );
+    }
+
     const collected = [];
     let shardStart = 0;
 
-    for (const handle of shards) {
+    for (const file of this._shards) {
       if (collected.length >= length) break;
 
-      const file = await handle.getFile();
       const buf = await file.arrayBuffer();
       const table = tableFromIPC(new Uint8Array(buf));
-      const shardEnd = shardStart + table.numRows;
 
       const rowFrom = Math.max(0, offset - shardStart);
       const rowTo = Math.min(table.numRows, offset + length - shardStart);
@@ -73,7 +62,7 @@ export class HFDiskDataSource extends DataSource {
         }
       }
 
-      shardStart = shardEnd;
+      shardStart += table.numRows;
     }
 
     return collected;
@@ -81,8 +70,6 @@ export class HFDiskDataSource extends DataSource {
 }
 
 // ── Arrow → plain JS conversion ────────────────────────────────────────────
-// Works column-by-column down the schema tree so we never touch StructRow
-// internals (whose API differs across apache-arrow versions).
 
 function extractRow(parent, fields, i) {
   const obj = {};
@@ -97,7 +84,11 @@ function extractValue(col, type, i) {
   if (DataType.isStruct(type)) {
     return extractRow(col, type.children, i);
   }
-  if (DataType.isList(type) || DataType.isLargeList(type) || DataType.isFixedSizeList(type)) {
+  if (
+    DataType.isList(type) ||
+    DataType.isLargeList(type) ||
+    DataType.isFixedSizeList(type)
+  ) {
     const vec = col.get(i);
     if (vec == null) return [];
     return Array.from({ length: vec.length }, (_, j) => coerce(vec.get(j)));
@@ -105,7 +96,6 @@ function extractValue(col, type, i) {
   return coerce(col.get(i));
 }
 
-// BigInt (int64/uint64) → Number; everything else passes through
 function coerce(v) {
   return typeof v === "bigint" ? Number(v) : v;
 }

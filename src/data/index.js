@@ -19,7 +19,7 @@ export function createDataSource(descriptor) {
       });
     }
     if (descriptor.source === "hf-disk") {
-      return new HFDiskDataSource(descriptor.dirHandle);
+      return new HFDiskDataSource(descriptor.files);
     }
     if (descriptor.source === "file") {
       return new FileDataSource(descriptor.file);

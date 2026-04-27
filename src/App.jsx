@@ -12,6 +12,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const fileInputRef = useRef(null);
+  const dirInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,26 +66,24 @@ export default function App() {
     setDataset(descriptor);
   };
 
-  const handleDirPick = async () => {
-    try {
-      const dirHandle = await window.showDirectoryPicker({ mode: "read" });
-      const descriptor = {
-        id: `hf-disk::${dirHandle.name}`,
-        label: dirHandle.name,
-        source: "hf-disk",
-        dirHandle,
-      };
-      setDatasets((prev) => {
-        const without = prev.filter((d) => d.id !== descriptor.id);
-        return [...without, descriptor];
-      });
-      setDataset(descriptor);
-    } catch (err) {
-      if (err.name !== "AbortError") console.error(err);
-    }
+  const handleDirChange = (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    e.target.value = "";
+    const dirName =
+      files[0]?.webkitRelativePath?.split("/")[0] ?? files[0]?.name ?? "dataset";
+    const descriptor = {
+      id: `hf-disk::${dirName}`,
+      label: dirName,
+      source: "hf-disk",
+      files: Array.from(files),
+    };
+    setDatasets((prev) => {
+      const without = prev.filter((d) => d.id !== descriptor.id);
+      return [...without, descriptor];
+    });
+    setDataset(descriptor);
   };
-
-  const canPickDir = typeof window.showDirectoryPicker === "function";
 
   const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
 
@@ -116,16 +115,18 @@ export default function App() {
             </select>
             <button
               className="browse-btn"
-              onClick={handleDirPick}
-              disabled={!canPickDir}
-              title={
-                canPickDir
-                  ? "Open an HF dataset directory (Arrow shards)"
-                  : "Requires Chrome or Edge"
-              }
+              onClick={() => dirInputRef.current.click()}
+              title="Open an HF dataset directory (Arrow shards)"
             >
               Open HF dataset…
             </button>
+            <input
+              ref={dirInputRef}
+              type="file"
+              webkitdirectory=""
+              style={{ display: "none" }}
+              onChange={handleDirChange}
+            />
             <button
               className="browse-btn secondary"
               onClick={() => fileInputRef.current.click()}
