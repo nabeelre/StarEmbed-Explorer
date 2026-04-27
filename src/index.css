@@ -1,0 +1,65 @@
+/* Intentionally minimal. Design phase will replace this entirely. */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.app header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.app header .meta {
+  margin: 0 0 1.5rem;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.app header .meta code {
+  background: #f3f3f3;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+}
+
+.error {
+  color: #b00020;
+  background: #fde7ea;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+
+details {
+  margin-top: 1.5rem;
+  border: 1px solid #e2e2e2;
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+}
+
+details summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+details pre {
+  font-size: 12px;
+  overflow-x: auto;
+  background: #fafafa;
+  padding: 0.75rem;
+  border-radius: 4px;
+}

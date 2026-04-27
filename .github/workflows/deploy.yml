@@ -1,0 +1,58 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Cancel in-flight runs but always finish the latest one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        env:
+          # GitHub Pages serves the site from /<repo-name>/
+          BASE_PATH: /${{ github.event.repository.name }}/
+          # Production build: read from the HuggingFace API.
+          # Set HF_DATASET as a repository variable (Settings → Variables → Actions).
+          VITE_DATA_SOURCE: hf
+          VITE_HF_DATASET: ${{ vars.HF_DATASET }}
+          VITE_HF_CONFIG: ${{ vars.HF_CONFIG || 'default' }}
+          VITE_HF_SPLIT: ${{ vars.HF_SPLIT || 'train' }}
+        run: npm run build
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

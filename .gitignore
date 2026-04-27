@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+.vite
+*.log
+.DS_Store
+.env
+.env.local
+.env.*.local
+
+# Larger exported datasets — keep the small sample committed but
+# avoid checking in big exports. Uncomment if needed.
+# public/data/*.jsonl
+# !public/data/sample.jsonl
