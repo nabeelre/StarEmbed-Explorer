@@ -1,15 +1,15 @@
 import Plot from "./Plot.jsx";
 
-const BANDS = {
-  g_PTF: { color: "#3a7cbf", label: "g (PTF)" },
-  R_PTF: { color: "#d95f3b", label: "R (PTF)" },
-};
+const PALETTE = [
+  "#3a7cbf", "#d95f3b", "#2ca02c", "#9467bd",
+  "#e7ba52", "#17becf", "#e377c2", "#8c564b",
+];
 
-function buildTrace(bandKey, bandData, mode, period) {
+function buildTrace(bandKey, bandData, mode, period, color) {
   if (!bandData?.mjd?.length) return null;
 
   const { mjd, mag, mag_unc, goodflag } = bandData;
-  const idx = mjd.map((_, i) => i).filter((i) => goodflag[i] === 1);
+  const idx = mjd.map((_, i) => i).filter((i) => !goodflag || goodflag[i] === 1);
   if (!idx.length) return null;
 
   const x =
@@ -29,23 +29,20 @@ function buildTrace(bandKey, bandData, mode, period) {
     },
     type: "scatter",
     mode: "markers",
-    name: BANDS[bandKey].label,
-    marker: { color: BANDS[bandKey].color, size: 8, opacity: 0.8 },
+    name: bandKey,
+    marker: { color, size: 8, opacity: 0.8 },
   };
 }
 
 export default function LightCurvePlot({ row, mode = "raw" }) {
   if (!row) return null;
-  const { g_PTF, R_PTF } = row.lightcurve;
-  const traces = [
-    buildTrace("g_PTF", g_PTF, mode, row.period),
-    buildTrace("R_PTF", R_PTF, mode, row.period),
-  ].filter(Boolean);
+
+  const traces = Object.keys(row.lightcurve).map((bandKey, i) =>
+    buildTrace(bandKey, row.lightcurve[bandKey], mode, row.period, PALETTE[i % PALETTE.length])
+  ).filter(Boolean);
 
   if (!traces.length) {
-    return (
-      <p className="no-data">No good-flag observations in either band.</p>
-    );
+    return <p className="no-data">No good-flag observations in any band.</p>;
   }
 
   return (

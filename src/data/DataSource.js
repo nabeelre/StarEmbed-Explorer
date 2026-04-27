@@ -30,4 +30,15 @@ export class DataSource {
   async getRows(opts = {}) {
     throw new Error("DataSource.getRows not implemented");
   }
+
+  /**
+   * @returns {Promise<{
+   *   totalRows: number,
+   *   classCounts: Record<string, number>,  // sorted descending
+   *   bands: string[],
+   * } | null>}  null if the source can't produce a summary cheaply
+   */
+  async getSummary() {
+    return null;
+  }
 }

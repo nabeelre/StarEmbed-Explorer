@@ -13,8 +13,12 @@ export class LocalDataSource extends DataSource {
   }
 
   async _load() {
-    if (this._cache) return this._cache;
+    if (this._loadPromise) return this._loadPromise;
+    this._loadPromise = this._fetch();
+    return this._loadPromise;
+  }
 
+  async _fetch() {
     // import.meta.env.BASE_URL respects vite's base config (e.g., /repo-name/)
     const url = `${import.meta.env.BASE_URL}${this.path.replace(/^\//, "")}`;
     const res = await fetch(url);
@@ -51,4 +55,31 @@ export class LocalDataSource extends DataSource {
     const rows = await this._load();
     return rows.slice(offset, offset + length);
   }
+
+  async getSummary() {
+    const rows = await this._load();
+    const classIndices = {};
+    const bandSet = new Set();
+    for (let i = 0; i < rows.length; i++) {
+      const cls = rows[i].class_str ?? "(none)";
+      if (!classIndices[cls]) classIndices[cls] = [];
+      classIndices[cls].push(i);
+      if (rows[i].lightcurve) {
+        for (const band of Object.keys(rows[i].lightcurve)) bandSet.add(band);
+      }
+    }
+    const sorted = Object.entries(classIndices).sort((a, b) => b[1].length - a[1].length);
+    return {
+      totalRows: rows.length,
+      classCounts: Object.fromEntries(sorted.map(([k, v]) => [k, v.length])),
+      classIndices: Object.fromEntries(sorted),
+      bands: [...bandSet],
+    };
+  }
+}
+
+function sortedCounts(obj) {
+  return Object.fromEntries(
+    Object.entries(obj).sort((a, b) => b[1] - a[1])
+  );
 }

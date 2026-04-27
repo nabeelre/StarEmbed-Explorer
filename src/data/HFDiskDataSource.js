@@ -1,12 +1,18 @@
 import { DataSource } from "./DataSource.js";
 import { tableFromIPC, DataType } from "apache-arrow";
 
+// DataType.isLargeList was removed in apache-arrow v14+.
+const isList = (type) =>
+  DataType.isList(type) ||
+  DataType.isFixedSizeList(type) ||
+  type.valueType !== undefined;
+
 /**
  * Reads a HuggingFace dataset saved to disk (Arrow shard files).
  *
- * Constructed from the File[] provided by an <input type="file" webkitdirectory>
- * element — works in Safari, Firefox, and Chrome. Nothing is uploaded or
- * transferred; files are read locally by the browser.
+ * On first getRows call, scans all shards once to build a row-count index.
+ * Subsequent calls load only the shard that contains the requested offset,
+ * so random access across 80k rows only reads ~1/N of the data per request.
  */
 export class HFDiskDataSource extends DataSource {
   constructor(files) {
@@ -19,57 +25,137 @@ export class HFDiskDataSource extends DataSource {
     this.dirName =
       all[0]?.webkitRelativePath?.split("/")[0] ?? all[0]?.name ?? "dataset";
     this._allNames = all.map((f) => f.webkitRelativePath || f.name);
+
+    this._scanPromise = null;      // single shared Promise for the count scan
+    this._cumulativeCounts = null; // cumulative row counts across shards
+    this._totalRows = 0;
+    this._summary = null;
+    this._cachedShard = null;      // { idx, table } — most recently loaded shard
+  }
+
+  // Scan all shards once to build cumulative row-count index.
+  // Returns the same Promise on repeated calls so the scan runs exactly once.
+  _scan() {
+    if (this._scanPromise) return this._scanPromise;
+    this._scanPromise = (async () => {
+      if (this._shards.length === 0) {
+        const preview = this._allNames.slice(0, 8).join(", ") || "none";
+        throw new Error(
+          `No .arrow files found in "${this.dirName}". ` +
+            `Files received: ${preview}${this._allNames.length > 8 ? ", …" : ""}. ` +
+            "Select the directory that directly contains the .arrow shards."
+        );
+      }
+      const counts = [];
+      const classIndices = new Map(); // class → global row indices
+      let bands = null;
+      let globalIdx = 0;
+
+      for (const file of this._shards) {
+        const buf = await file.arrayBuffer();
+        const table = tableFromIPC(new Uint8Array(buf));
+        counts.push(table.numRows);
+
+        // Band names from schema (first shard only)
+        if (!bands) {
+          const lcField = table.schema.fields.find((f) => f.name === "lightcurve");
+          if (lcField) bands = lcField.type.children.map((f) => f.name);
+        }
+
+        // Build class → [globalRowIndex] index in one columnar pass
+        const classCol = table.getChild("class_str");
+        if (classCol) {
+          for (let i = 0; i < table.numRows; i++) {
+            const key = classCol.get(i) ?? "(none)";
+            if (!classIndices.has(key)) classIndices.set(key, []);
+            classIndices.get(key).push(globalIdx);
+            globalIdx++;
+          }
+        } else {
+          globalIdx += table.numRows;
+        }
+      }
+
+      let cumulative = 0;
+      this._cumulativeCounts = counts.map((n) => (cumulative += n));
+      this._totalRows = cumulative;
+
+      const sortedIndices = [...classIndices.entries()].sort(
+        (a, b) => b[1].length - a[1].length
+      );
+      this._summary = {
+        totalRows: this._totalRows,
+        classCounts: Object.fromEntries(sortedIndices.map(([k, v]) => [k, v.length])),
+        classIndices: Object.fromEntries(sortedIndices),
+        bands: bands ?? [],
+      };
+    })();
+    return this._scanPromise;
   }
 
   async getInfo() {
+    let numRows = null;
+    let columns = [];
     if (this._infoFile) {
       try {
         const json = JSON.parse(await this._infoFile.text());
-        return {
-          source: "hf-disk",
-          path: this.dirName,
-          numRows: json.num_examples ?? null,
-          columns: json.features ? Object.keys(json.features) : [],
-        };
+        numRows = json.num_examples ?? null;
+        columns = json.features ? Object.keys(json.features) : [];
       } catch {
         // fall through
       }
     }
-    return { source: "hf-disk", path: this.dirName };
+    // Always kick off the scan so it runs in the background.
+    // getRows will await it before proceeding.
+    const scanDone = this._scan();
+    if (numRows === null) {
+      await scanDone;
+      numRows = this._totalRows;
+    }
+    return { source: "hf-disk", path: this.dirName, numRows, columns };
   }
 
-  async getRows({ offset = 0, length = 100 } = {}) {
-    if (this._shards.length === 0) {
-      const preview = this._allNames.slice(0, 8).join(", ") || "none";
-      throw new Error(
-        `No .arrow files found in "${this.dirName}". ` +
-          `Files received: ${preview}${this._allNames.length > 8 ? ", …" : ""}. ` +
-          "Select the directory that directly contains the .arrow shards."
-      );
-    }
+  async getRows({ offset = 0, length = 1 } = {}) {
+    await this._scan();
 
     const collected = [];
-    let shardStart = 0;
+    let remaining = length;
+    let cursor = offset;
 
-    for (const file of this._shards) {
-      if (collected.length >= length) break;
+    while (remaining > 0) {
+      const shardIdx = this._cumulativeCounts.findIndex((c) => c > cursor);
+      if (shardIdx === -1) break; // offset beyond end of dataset
 
-      const buf = await file.arrayBuffer();
-      const table = tableFromIPC(new Uint8Array(buf));
+      const shardStart = shardIdx === 0 ? 0 : this._cumulativeCounts[shardIdx - 1];
+      const table = await this._loadShard(shardIdx);
 
-      const rowFrom = Math.max(0, offset - shardStart);
-      const rowTo = Math.min(table.numRows, offset + length - shardStart);
+      const rowFrom = cursor - shardStart;
+      const rowTo = Math.min(table.numRows, rowFrom + remaining);
 
-      if (rowFrom < rowTo) {
-        for (let i = rowFrom; i < rowTo; i++) {
-          collected.push(extractRow(table, table.schema.fields, i));
-        }
+      for (let i = rowFrom; i < rowTo; i++) {
+        collected.push(extractRow(table, table.schema.fields, i));
       }
 
-      shardStart += table.numRows;
+      const fetched = rowTo - rowFrom;
+      remaining -= fetched;
+      cursor += fetched;
     }
 
     return collected;
+  }
+
+  async getSummary() {
+    await this._scan();
+    return this._summary;
+  }
+
+  async _loadShard(idx) {
+    if (this._cachedShard?.idx === idx) return this._cachedShard.table;
+    const file = this._shards[idx];
+    const buf = await file.arrayBuffer();
+    const table = tableFromIPC(new Uint8Array(buf));
+    this._cachedShard = { idx, table };
+    return table;
   }
 }
 
@@ -88,11 +174,7 @@ function extractValue(col, type, i) {
   if (DataType.isStruct(type)) {
     return extractRow(col, type.children, i);
   }
-  if (
-    DataType.isList(type) ||
-    DataType.isLargeList(type) ||
-    DataType.isFixedSizeList(type)
-  ) {
+  if (isList(type)) {
     const vec = col.get(i);
     if (vec == null) return [];
     return Array.from({ length: vec.length }, (_, j) => coerce(vec.get(j)));
