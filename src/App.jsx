@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, Component } from "react";
 import { createDataSource } from "./data";
 import { DATASETS } from "./datasets.js";
 import LightCurvePlot from "./components/LightCurvePlot.jsx";
+import SkyPlot from "./components/SkyPlot.jsx";
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -39,9 +40,9 @@ export default function App() {
     setError(null);
     setCurrentRow(null);
     setInfo(null);
-    setSummary(null);
     setEnabledClasses(null);
     setTotalRows(0);
+    // Leave summary visible (sky plot stays on screen) until the new one arrives
 
     const ds = createDataSource(dataset);
     dsRef.current = ds;
@@ -69,7 +70,7 @@ export default function App() {
           if (!cancelled && rows[0]) setCurrentRow(rows[0]);
         }
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) { setError(err.message); setSummary(null); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -169,13 +170,6 @@ export default function App() {
               style={{ display: "none" }}
               onChange={handleDirChange}
             />
-            <button
-              className="random-btn"
-              onClick={pickRandom}
-              disabled={loading || totalRows === 0}
-            >
-              ⚄ Random star
-            </button>
           </div>
         </div>
       </header>
@@ -186,6 +180,7 @@ export default function App() {
         <DatasetSummary
           summary={summary}
           datasetLabel={dataset.source === "hf" ? dataset.dataset : (info?.path ?? dataset.label)}
+          currentRow={currentRow}
           enabledClasses={enabledClasses}
           onToggle={toggleClass}
           onToggleMany={toggleMany}
@@ -194,15 +189,15 @@ export default function App() {
       )}
       {!loading && !error && currentRow && (
         <ErrorBoundary key={currentRow.sourceid ?? currentRow.gaia_dr3_source_id}>
-          <SourceDetail row={currentRow} />
+          <SourceDetail row={currentRow} onRandom={pickRandom} randomDisabled={loading} />
         </ErrorBoundary>
       )}
     </div>
   );
 }
 
-function DatasetSummary({ summary, datasetLabel, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
-  const { totalRows, classCounts, bands } = summary;
+function DatasetSummary({ summary, datasetLabel, currentRow, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
+  const { totalRows, classCounts, bands, skyPoints } = summary;
   const allEntries = Object.entries(classCounts);
   const top = allEntries.slice(0, 10);
   const otherEntries = allEntries.slice(10);
@@ -221,6 +216,11 @@ function DatasetSummary({ summary, datasetLabel, enabledClasses, onToggle, onTog
           <span className="summary-dataset-name mono">{datasetLabel}</span>
         </div>
       )}
+      <div className="summary-body">
+      <div className="summary-sky">
+        <SkyPlot skyPoints={skyPoints ?? []} currentRow={currentRow} />
+      </div>
+      <div className="summary-stats">
       <div className="summary-top">
         <span className="summary-stat">
           <span className="summary-stat-value">{totalRows.toLocaleString()}</span>
@@ -289,11 +289,13 @@ function DatasetSummary({ summary, datasetLabel, enabledClasses, onToggle, onTog
           </div>
         </>
       )}
+      </div>{/* summary-stats */}
+      </div>{/* summary-body */}
     </div>
   );
 }
 
-function SourceDetail({ row }) {
+function SourceDetail({ row, onRandom, randomDisabled }) {
   const bands = Object.entries(row.lightcurve ?? {});
 
   return (
@@ -304,6 +306,13 @@ function SourceDetail({ row }) {
           <span className="star-id-value mono">{row.gaia_dr3_source_id}</span>
         </div>
         <span className="class-badge large">{row.class_str ?? "—"}</span>
+        <button
+          className="random-btn-primary"
+          onClick={onRandom}
+          disabled={randomDisabled}
+        >
+          ⚄ Random star
+        </button>
       </div>
 
       <div className="meta-grid">
