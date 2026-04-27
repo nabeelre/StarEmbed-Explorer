@@ -1,29 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createDataSource } from "./data";
 import { config } from "./config";
-import Plot from "./components/Plot.jsx";
+import LightCurvePlot from "./components/LightCurvePlot.jsx";
 
-/**
- * Placeholder UI for the scaffolding phase.
- * Goal: prove that the data pipeline works end-to-end.
- *   - Connects to the configured DataSource
- *   - Shows dataset metadata
- *   - Renders the first row's series in a Plotly chart IF the row looks
- *     like a time series (heuristic: has array fields)
- *   - Shows the raw rows for inspection
- *
- * Real exploration UI lands in the design phase.
- */
+const PAGE_SIZE = 20;
+
 export default function App() {
   const [info, setInfo] = useState(null);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedIdx, setSelectedIdx] = useState(null);
+  const [plotMode, setPlotMode] = useState("raw");
+  const [classFilter, setClassFilter] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     const ds = createDataSource();
-    Promise.all([ds.getInfo(), ds.getRows({ offset: 0, length: 5 })])
+    Promise.all([ds.getInfo(), ds.getRows({ offset: 0, length: 200 })])
       .then(([info, rows]) => {
         if (cancelled) return;
         setInfo(info);
@@ -42,91 +37,186 @@ export default function App() {
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="app">
-        <p>Loading…</p>
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="app">
-        <p className="error">Error loading data: {error}</p>
-      </div>
-    );
-  }
+  const filteredRows = useMemo(() => {
+    const q = classFilter.trim().toUpperCase();
+    return rows
+      .map((row, idx) => ({ row, idx }))
+      .filter(({ row }) => !q || row.class_str?.toUpperCase().includes(q));
+  }, [rows, classFilter]);
+
+  const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
+  const pageRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
+
+  if (loading) return <div className="app"><p>Loading…</p></div>;
+  if (error) return <div className="app"><p className="error">Error: {error}</p></div>;
 
   return (
     <div className="app">
       <header>
-        <h1>Time Series Explorer</h1>
+        <h1>PTF Variable Star Explorer</h1>
         <p className="meta">
           Source: <code>{config.dataSource}</code>
           {" · "}
-          Rows: {info.numRows ?? "?"}
+          {info?.numRows ?? rows.length} total sources
           {" · "}
-          Columns: {info.columns?.length ? info.columns.join(", ") : "?"}
+          g_PTF + R_PTF bands
         </p>
       </header>
 
-      <PreviewChart row={rows[0]} />
+      <div className="explorer-layout">
+        <section className="source-panel">
+          <div className="panel-toolbar">
+            <input
+              className="search-input"
+              type="search"
+              placeholder="Filter by class (EW, RR, CEP…)"
+              value={classFilter}
+              onChange={(e) => {
+                setClassFilter(e.target.value);
+                setPage(0);
+              }}
+            />
+            <span className="count-badge">{filteredRows.length}</span>
+          </div>
 
-      <details open>
-        <summary>First {rows.length} row(s) (raw)</summary>
-        <pre>{JSON.stringify(rows, null, 2)}</pre>
-      </details>
+          <div className="table-scroll">
+            <table className="source-table">
+              <thead>
+                <tr>
+                  <th>Source ID</th>
+                  <th>Class</th>
+                  <th>Period (d)</th>
+                  <th>g</th>
+                  <th>R</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map(({ row, idx }) => (
+                  <tr
+                    key={row.sourceid}
+                    className={idx === selectedIdx ? "selected" : ""}
+                    onClick={() => {
+                      setSelectedIdx(idx);
+                      setPlotMode("raw");
+                    }}
+                  >
+                    <td className="mono">{row.sourceid}</td>
+                    <td>
+                      <span className="class-badge">{row.class_str ?? "—"}</span>
+                    </td>
+                    <td>{row.period != null ? row.period.toFixed(4) : "—"}</td>
+                    <td>{row.lightcurve.g_PTF?.length ?? 0}</td>
+                    <td>{row.lightcurve.R_PTF?.length ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="pagination">
+              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
+                ←
+              </button>
+              <span>
+                {page + 1} / {totalPages}
+              </span>
+              <button
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                →
+              </button>
+            </div>
+          )}
+        </section>
+
+        <section className="detail-panel">
+          {selectedRow ? (
+            <SourceDetail
+              row={selectedRow}
+              plotMode={plotMode}
+              onPlotModeChange={setPlotMode}
+            />
+          ) : (
+            <p className="empty-hint">← Select a source to explore its light curve.</p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
 
-/**
- * Heuristic preview: find the first array-of-numbers field in the row and
- * plot it. If a sibling field looks like timestamps (array of strings or
- * numbers, same length), use it as the x axis.
- *
- * This is intentionally generic — we don't know the schema yet. Once we do,
- * this gets replaced with proper schema-aware components.
- */
-function PreviewChart({ row }) {
-  if (!row) return null;
-
-  const entries = Object.entries(row);
-  const numeric = entries.find(
-    ([, v]) => Array.isArray(v) && v.length > 0 && typeof v[0] === "number",
-  );
-  if (!numeric) return null;
-  const [valueKey, values] = numeric;
-
-  const xCandidate = entries.find(
-    ([k, v]) => k !== valueKey && Array.isArray(v) && v.length === values.length,
-  );
-  const x = xCandidate ? xCandidate[1] : values.map((_, i) => i);
-  const xLabel = xCandidate ? xCandidate[0] : "index";
-
-  const seriesId =
-    row.id || row.item_id || row.series_id || row.name || "series 0";
+function SourceDetail({ row, plotMode, onPlotModeChange }) {
+  const g = row.lightcurve.g_PTF;
+  const R = row.lightcurve.R_PTF;
+  const gGood = g?.goodflag?.filter((f) => f === 1).length ?? 0;
+  const RGood = R?.goodflag?.filter((f) => f === 1).length ?? 0;
 
   return (
-    <Plot
-      data={[
-        {
-          x,
-          y: values,
-          type: "scatter",
-          mode: "lines",
-          name: String(seriesId),
-        },
-      ]}
-      layout={{
-        title: { text: `Preview: ${seriesId}` },
-        margin: { t: 40, r: 20, b: 40, l: 50 },
-        xaxis: { title: { text: xLabel }, rangeslider: { visible: true } },
-        yaxis: { title: { text: valueKey } },
-      }}
-      style={{ width: "100%", height: "420px" }}
-      config={{ responsive: true, displaylogo: false }}
-      useResizeHandler
-    />
+    <div className="detail-inner">
+      <div className="detail-titlebar">
+        <h2 className="mono">{row.sourceid}</h2>
+        <span className="class-badge large">{row.class_str ?? "—"}</span>
+      </div>
+
+      <div className="meta-grid">
+        <MetaItem label="Period" value={row.period != null ? `${row.period.toFixed(6)} d` : null} />
+        <MetaItem label="RA" value={row.gaia_dr3_ra?.toFixed(6)} />
+        <MetaItem label="Dec" value={row.gaia_dr3_dec?.toFixed(6)} />
+        <MetaItem
+          label="Parallax"
+          value={
+            row.parallax != null
+              ? `${row.parallax.toFixed(3)} ± ${row.parallax_error?.toFixed(3)} mas`
+              : null
+          }
+        />
+        <MetaItem
+          label="PM (RA, Dec)"
+          value={
+            row.pmra != null
+              ? `${row.pmra.toFixed(2)}, ${row.pmdec?.toFixed(2)} mas/yr`
+              : null
+          }
+        />
+        <MetaItem
+          label="Radial vel."
+          value={row.radial_velocity != null ? `${row.radial_velocity.toFixed(2)} km/s` : null}
+        />
+        <MetaItem label="Gaia DR3 ID" value={row.gaia_dr3_source_id} mono />
+        <MetaItem label="g obs (good)" value={`${g?.length ?? 0} (${gGood})`} />
+        <MetaItem label="R obs (good)" value={`${R?.length ?? 0} (${RGood})`} />
+      </div>
+
+      <div className="plot-controls">
+        <button
+          className={plotMode === "raw" ? "active" : ""}
+          onClick={() => onPlotModeChange("raw")}
+        >
+          Raw
+        </button>
+        <button
+          className={plotMode === "folded" ? "active" : ""}
+          onClick={() => onPlotModeChange("folded")}
+          disabled={!row.period}
+          title={!row.period ? "No period available" : `Fold at P = ${row.period} d`}
+        >
+          Phase-folded
+        </button>
+      </div>
+
+      <LightCurvePlot row={row} mode={plotMode} />
+    </div>
+  );
+}
+
+function MetaItem({ label, value, mono = false }) {
+  return (
+    <div className="meta-item">
+      <span className="meta-label">{label}</span>
+      <span className={`meta-value${mono ? " mono" : ""}`}>{value ?? "—"}</span>
+    </div>
   );
 }

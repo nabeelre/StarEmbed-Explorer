@@ -1,4 +1,3 @@
-/* Intentionally minimal. Design phase will replace this entirely. */
 * {
   box-sizing: border-box;
 }
@@ -12,54 +11,298 @@ body,
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  color: #1a1a1a;
 }
 
 .app {
-  max-width: 1100px;
+  max-width: 1300px;
   margin: 0 auto;
-  padding: 1.5rem 1rem;
+  padding: 1.25rem 1rem 2rem;
 }
 
+/* ── Header ───────────────────────────────────────────────── */
+
 .app header h1 {
-  margin: 0 0 0.25rem;
-  font-size: 1.5rem;
+  margin: 0 0 0.2rem;
+  font-size: 1.4rem;
 }
 
 .app header .meta {
-  margin: 0 0 1.5rem;
+  margin: 0 0 1rem;
   color: #666;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .app header .meta code {
-  background: #f3f3f3;
+  background: #f0f0f0;
   padding: 0.1rem 0.35rem;
   border-radius: 3px;
+  font-size: 0.8rem;
+}
+
+/* ── Two-column layout ────────────────────────────────────── */
+
+.explorer-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  min-height: 0;
+}
+
+.source-panel {
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.detail-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* ── Source panel internals ───────────────────────────────── */
+
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fafafa;
+}
+
+.search-input {
+  flex: 1;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #3a7cbf;
+  box-shadow: 0 0 0 2px rgba(58, 124, 191, 0.15);
+}
+
+.count-badge {
+  font-size: 0.8rem;
+  color: #888;
+  white-space: nowrap;
+}
+
+.table-scroll {
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+}
+
+.source-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.source-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f5f5f5;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: #555;
+  border-bottom: 1px solid #e0e0e0;
+  white-space: nowrap;
+}
+
+.source-table tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.08s;
+}
+
+.source-table tbody tr:hover {
+  background: #f0f6ff;
+}
+
+.source-table tbody tr.selected {
+  background: #e3eefb;
+}
+
+.source-table td {
+  padding: 0.4rem 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.source-table td:first-child {
+  max-width: 130px;
+}
+
+/* ── Pagination ───────────────────────────────────────────── */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-top: 1px solid #e8e8e8;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.pagination button {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.pagination button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.pagination button:not(:disabled):hover {
+  background: #f0f6ff;
+  border-color: #3a7cbf;
+}
+
+/* ── Detail panel internals ───────────────────────────────── */
+
+.empty-hint {
+  padding: 2rem 1.5rem;
+  color: #888;
+  font-style: italic;
+}
+
+.detail-inner {
+  padding: 1rem 1.25rem;
+}
+
+.detail-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.detail-titlebar h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* ── Metadata grid ────────────────────────────────────────── */
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.25rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  background: #f7f8fa;
+  border-radius: 5px;
+  border: 1px solid #e8e8e8;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.2rem 0;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.meta-value {
+  font-size: 0.875rem;
+  color: #222;
+}
+
+/* ── Plot controls ────────────────────────────────────────── */
+
+.plot-controls {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.plot-controls button {
+  padding: 0.3rem 0.9rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #444;
+  transition: background 0.08s, border-color 0.08s;
+}
+
+.plot-controls button:hover:not(:disabled) {
+  background: #f0f6ff;
+  border-color: #3a7cbf;
+}
+
+.plot-controls button.active {
+  background: #3a7cbf;
+  border-color: #3a7cbf;
+  color: #fff;
+}
+
+.plot-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Shared atoms ─────────────────────────────────────────── */
+
+.mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.85em;
+}
+
+.class-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 3px;
+  background: #e8f0fb;
+  color: #2a5a9e;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.class-badge.large {
+  font-size: 0.9rem;
+  padding: 0.2rem 0.6rem;
+}
+
+.no-data {
+  color: #888;
+  padding: 1rem 0;
+  font-style: italic;
 }
 
 .error {
   color: #b00020;
   background: #fde7ea;
   padding: 0.75rem 1rem;
-  border-radius: 4px;
-}
-
-details {
-  margin-top: 1.5rem;
-  border: 1px solid #e2e2e2;
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-}
-
-details summary {
-  cursor: pointer;
-  font-weight: 500;
-}
-
-details pre {
-  font-size: 12px;
-  overflow-x: auto;
-  background: #fafafa;
-  padding: 0.75rem;
   border-radius: 4px;
 }
