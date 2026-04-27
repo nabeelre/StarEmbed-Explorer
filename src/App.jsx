@@ -11,7 +11,6 @@ export default function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [plotMode, setPlotMode] = useState("raw");
   const [classFilter, setClassFilter] = useState("");
   const [page, setPage] = useState(0);
 
@@ -54,7 +53,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>PTF Variable Star Explorer</h1>
+        <h1>StarEmbed Explorer</h1>
         <p className="meta">
           Source: <code>{config.dataSource}</code>
           {" · "}
@@ -78,6 +77,13 @@ export default function App() {
               }}
             />
             <span className="count-badge">{filteredRows.length}</span>
+            <button
+              className="random-btn"
+              onClick={() => setSelectedIdx(Math.floor(Math.random() * rows.length))}
+              title="Jump to a random source"
+            >
+              ⚄ Random
+            </button>
           </div>
 
           <div className="table-scroll">
@@ -96,10 +102,7 @@ export default function App() {
                   <tr
                     key={row.sourceid}
                     className={idx === selectedIdx ? "selected" : ""}
-                    onClick={() => {
-                      setSelectedIdx(idx);
-                      setPlotMode("raw");
-                    }}
+                    onClick={() => setSelectedIdx(idx)}
                   >
                     <td className="mono">{row.sourceid}</td>
                     <td>
@@ -134,11 +137,7 @@ export default function App() {
 
         <section className="detail-panel">
           {selectedRow ? (
-            <SourceDetail
-              row={selectedRow}
-              plotMode={plotMode}
-              onPlotModeChange={setPlotMode}
-            />
+            <SourceDetail row={selectedRow} />
           ) : (
             <p className="empty-hint">← Select a source to explore its light curve.</p>
           )}
@@ -148,7 +147,7 @@ export default function App() {
   );
 }
 
-function SourceDetail({ row, plotMode, onPlotModeChange }) {
+function SourceDetail({ row }) {
   const g = row.lightcurve.g_PTF;
   const R = row.lightcurve.R_PTF;
   const gGood = g?.goodflag?.filter((f) => f === 1).length ?? 0;
@@ -190,24 +189,16 @@ function SourceDetail({ row, plotMode, onPlotModeChange }) {
         <MetaItem label="R obs (good)" value={`${R?.length ?? 0} (${RGood})`} />
       </div>
 
-      <div className="plot-controls">
-        <button
-          className={plotMode === "raw" ? "active" : ""}
-          onClick={() => onPlotModeChange("raw")}
-        >
-          Raw
-        </button>
-        <button
-          className={plotMode === "folded" ? "active" : ""}
-          onClick={() => onPlotModeChange("folded")}
-          disabled={!row.period}
-          title={!row.period ? "No period available" : `Fold at P = ${row.period} d`}
-        >
-          Phase-folded
-        </button>
+      <div className="plot-row">
+        <div className="plot-col">
+          <p className="plot-label">Raw</p>
+          <LightCurvePlot row={row} mode="raw" />
+        </div>
+        <div className="plot-col">
+          <p className="plot-label">Phase-folded {row.period ? `(P = ${row.period.toFixed(4)} d)` : ""}</p>
+          <LightCurvePlot row={row} mode="folded" />
+        </div>
       </div>
-
-      <LightCurvePlot row={row} mode={plotMode} />
     </div>
   );
 }

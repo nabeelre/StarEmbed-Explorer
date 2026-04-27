@@ -30,7 +30,7 @@ function buildTrace(bandKey, bandData, mode, period) {
     type: "scatter",
     mode: "markers",
     name: BANDS[bandKey].label,
-    marker: { color: BANDS[bandKey].color, size: 4, opacity: 0.8 },
+    marker: { color: BANDS[bandKey].color, size: 8, opacity: 0.8 },
   };
 }
 
