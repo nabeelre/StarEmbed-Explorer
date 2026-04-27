@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createDataSource } from "./data";
 import { DATASETS } from "./datasets.js";
 import LightCurvePlot from "./components/LightCurvePlot.jsx";
 
 export default function App() {
+  const [datasets, setDatasets] = useState(DATASETS);
   const [dataset, setDataset] = useState(DATASETS[0]);
   const [info, setInfo] = useState(null);
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +48,24 @@ export default function App() {
   const pickRandom = () =>
     setSelectedIdx(Math.floor(Math.random() * rows.length));
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    // Reset so the same file can be re-picked after a change
+    e.target.value = "";
+    const descriptor = {
+      id: `file::${file.name}`,
+      label: file.name,
+      source: "file",
+      file,
+    };
+    setDatasets((prev) => {
+      const without = prev.filter((d) => d.id !== descriptor.id);
+      return [...without, descriptor];
+    });
+    setDataset(descriptor);
+  };
+
   const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
 
   return (
@@ -56,26 +76,38 @@ export default function App() {
             <h1>StarEmbed Explorer</h1>
             <p className="meta">
               {info
-                ? `${info.numRows ?? rows.length} sources · ${dataset.source === "hf" ? dataset.dataset : dataset.path}`
+                ? `${info.numRows ?? rows.length} sources · ${dataset.source === "hf" ? dataset.dataset : (info.path ?? dataset.path ?? dataset.label)}`
                 : " "}
             </p>
           </div>
           <div className="header-controls">
-            {DATASETS.length > 1 && (
-              <select
-                className="dataset-select"
-                value={dataset.id}
-                onChange={(e) =>
-                  setDataset(DATASETS.find((d) => d.id === e.target.value))
-                }
-              >
-                {DATASETS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-            )}
+            <select
+              className="dataset-select"
+              value={dataset.id}
+              onChange={(e) =>
+                setDataset(datasets.find((d) => d.id === e.target.value))
+              }
+            >
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="browse-btn"
+              onClick={() => fileInputRef.current.click()}
+              title="Open a JSONL file from anywhere on your filesystem"
+            >
+              Browse…
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jsonl,.json"
+              style={{ display: "none" }}
+              onChange={handleFileChange}
+            />
             <button
               className="random-btn"
               onClick={pickRandom}

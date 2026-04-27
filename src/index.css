@@ -156,7 +156,8 @@ body,
 
 /* ── Random button ────────────────────────────────────────── */
 
-.random-btn {
+.random-btn,
+.browse-btn {
   padding: 0.45rem 1rem;
   border: 1px solid #ccc;
   border-radius: 5px;
@@ -168,10 +169,16 @@ body,
   flex-shrink: 0;
 }
 
-.random-btn:hover {
+.random-btn:hover,
+.browse-btn:hover {
   background: #f0f6ff;
   border-color: #3a7cbf;
   color: #3a7cbf;
+}
+
+.random-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── Shared atoms ─────────────────────────────────────────── */
