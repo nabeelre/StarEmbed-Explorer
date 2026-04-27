@@ -176,9 +176,21 @@ body,
   color: #3a7cbf;
 }
 
-.random-btn:disabled {
+.random-btn:disabled,
+.browse-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.browse-btn.secondary {
+  color: #888;
+  border-color: #ddd;
+}
+
+.browse-btn.secondary:hover {
+  color: #3a7cbf;
+  border-color: #3a7cbf;
+  background: #f0f6ff;
 }
 
 /* ── Shared atoms ─────────────────────────────────────────── */

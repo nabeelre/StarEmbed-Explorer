@@ -2,10 +2,12 @@ import { config } from "../config.js";
 import { LocalDataSource } from "./LocalDataSource.js";
 import { HFDataSource } from "./HFDataSource.js";
 import { FileDataSource } from "./FileDataSource.js";
+import { HFDiskDataSource } from "./HFDiskDataSource.js";
 
 /**
  * Create a DataSource from a dataset descriptor (from src/datasets.js or the
- * file picker). Falls back to the env-var config when called with no argument.
+ * file/directory pickers). Falls back to the env-var config when called with
+ * no argument.
  */
 export function createDataSource(descriptor) {
   if (descriptor) {
@@ -15,6 +17,9 @@ export function createDataSource(descriptor) {
         config: descriptor.config ?? "default",
         split: descriptor.split ?? "train",
       });
+    }
+    if (descriptor.source === "hf-disk") {
+      return new HFDiskDataSource(descriptor.dirHandle);
     }
     if (descriptor.source === "file") {
       return new FileDataSource(descriptor.file);
@@ -28,4 +33,4 @@ export function createDataSource(descriptor) {
 }
 
 export { DataSource } from "./DataSource.js";
-export { LocalDataSource, HFDataSource, FileDataSource };
+export { LocalDataSource, HFDataSource, FileDataSource, HFDiskDataSource };

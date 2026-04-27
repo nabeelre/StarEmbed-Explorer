@@ -51,7 +51,6 @@ export default function App() {
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    // Reset so the same file can be re-picked after a change
     e.target.value = "";
     const descriptor = {
       id: `file::${file.name}`,
@@ -65,6 +64,27 @@ export default function App() {
     });
     setDataset(descriptor);
   };
+
+  const handleDirPick = async () => {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ mode: "read" });
+      const descriptor = {
+        id: `hf-disk::${dirHandle.name}`,
+        label: dirHandle.name,
+        source: "hf-disk",
+        dirHandle,
+      };
+      setDatasets((prev) => {
+        const without = prev.filter((d) => d.id !== descriptor.id);
+        return [...without, descriptor];
+      });
+      setDataset(descriptor);
+    } catch (err) {
+      if (err.name !== "AbortError") console.error(err);
+    }
+  };
+
+  const canPickDir = typeof window.showDirectoryPicker === "function";
 
   const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
 
@@ -96,10 +116,22 @@ export default function App() {
             </select>
             <button
               className="browse-btn"
-              onClick={() => fileInputRef.current.click()}
-              title="Open a JSONL file from anywhere on your filesystem"
+              onClick={handleDirPick}
+              disabled={!canPickDir}
+              title={
+                canPickDir
+                  ? "Open an HF dataset directory (Arrow shards)"
+                  : "Requires Chrome or Edge"
+              }
             >
-              Browse…
+              Open HF dataset…
+            </button>
+            <button
+              className="browse-btn secondary"
+              onClick={() => fileInputRef.current.click()}
+              title="Open a JSONL file"
+            >
+              Open JSONL…
             </button>
             <input
               ref={fileInputRef}
