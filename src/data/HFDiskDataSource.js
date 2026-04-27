@@ -48,6 +48,8 @@ export class HFDiskDataSource extends DataSource {
       }
       const counts = [];
       const classIndices = new Map(); // class → global row indices
+      const skyRa = [];
+      const skyDec = [];
       let bands = null;
       let globalIdx = 0;
 
@@ -62,17 +64,22 @@ export class HFDiskDataSource extends DataSource {
           if (lcField) bands = lcField.type.children.map((f) => f.name);
         }
 
-        // Build class → [globalRowIndex] index in one columnar pass
+        // Build class index and collect RA/Dec in one columnar pass
         const classCol = table.getChild("class_str");
-        if (classCol) {
-          for (let i = 0; i < table.numRows; i++) {
+        const raCol = table.getChild("gaia_dr3_ra");
+        const decCol = table.getChild("gaia_dr3_dec");
+        for (let i = 0; i < table.numRows; i++) {
+          if (classCol) {
             const key = classCol.get(i) ?? "(none)";
             if (!classIndices.has(key)) classIndices.set(key, []);
             classIndices.get(key).push(globalIdx);
-            globalIdx++;
           }
-        } else {
-          globalIdx += table.numRows;
+          if (raCol && decCol) {
+            const ra = raCol.get(i);
+            const dec = decCol.get(i);
+            if (ra != null && dec != null) { skyRa.push(ra); skyDec.push(dec); }
+          }
+          globalIdx++;
         }
       }
 
@@ -83,11 +90,30 @@ export class HFDiskDataSource extends DataSource {
       const sortedIndices = [...classIndices.entries()].sort(
         (a, b) => b[1].length - a[1].length
       );
+
+      // Random sample of up to SKY_SAMPLE sky positions (Fisher-Yates partial shuffle).
+      // scattergeo renders in SVG (not WebGL), so render time scales ~linearly with
+      // point count. 10k is comfortable on desktop; go higher only with scattergl.
+      const SKY_SAMPLE = 10_000;
+      const skyPoints = [];
+      const n = skyRa.length;
+      if (n <= SKY_SAMPLE) {
+        for (let i = 0; i < n; i++) skyPoints.push({ ra: skyRa[i], dec: skyDec[i] });
+      } else {
+        const indices = Array.from({ length: n }, (_, i) => i);
+        for (let i = 0; i < SKY_SAMPLE; i++) {
+          const j = i + Math.floor(Math.random() * (n - i));
+          [indices[i], indices[j]] = [indices[j], indices[i]];
+          skyPoints.push({ ra: skyRa[indices[i]], dec: skyDec[indices[i]] });
+        }
+      }
+
       this._summary = {
         totalRows: this._totalRows,
         classCounts: Object.fromEntries(sortedIndices.map(([k, v]) => [k, v.length])),
         classIndices: Object.fromEntries(sortedIndices),
         bands: bands ?? [],
+        skyPoints,
       };
     })();
     return this._scanPromise;

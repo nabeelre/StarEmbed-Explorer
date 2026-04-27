@@ -69,11 +69,29 @@ export class LocalDataSource extends DataSource {
       }
     }
     const sorted = Object.entries(classIndices).sort((a, b) => b[1].length - a[1].length);
+
+    const SKY_SAMPLE = 10_000; // see HFDiskDataSource for rationale
+    const skyPoints = [];
+    const allCoords = rows
+      .map((r) => ({ ra: r.gaia_dr3_ra, dec: r.gaia_dr3_dec }))
+      .filter((p) => p.ra != null && p.dec != null);
+    if (allCoords.length <= SKY_SAMPLE) {
+      skyPoints.push(...allCoords);
+    } else {
+      const indices = Array.from({ length: allCoords.length }, (_, i) => i);
+      for (let i = 0; i < SKY_SAMPLE; i++) {
+        const j = i + Math.floor(Math.random() * (allCoords.length - i));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+        skyPoints.push(allCoords[indices[i]]);
+      }
+    }
+
     return {
       totalRows: rows.length,
       classCounts: Object.fromEntries(sorted.map(([k, v]) => [k, v.length])),
       classIndices: Object.fromEntries(sorted),
       bands: [...bandSet],
+      skyPoints,
     };
   }
 }
