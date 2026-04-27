@@ -1,75 +1,121 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Component } from "react";
 import { createDataSource } from "./data";
 import { DATASETS } from "./datasets.js";
 import LightCurvePlot from "./components/LightCurvePlot.jsx";
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return <p className="error">Render error: {this.state.error.message}</p>;
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   const [datasets, setDatasets] = useState(DATASETS);
   const [dataset, setDataset] = useState(DATASETS[0]);
   const [info, setInfo] = useState(null);
-  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [enabledClasses, setEnabledClasses] = useState(null); // null = all
+  const [totalRows, setTotalRows] = useState(0);
+  const [currentRow, setCurrentRow] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedIdx, setSelectedIdx] = useState(null);
-  const fileInputRef = useRef(null);
+  const dsRef = useRef(null);
   const dirInputRef = useRef(null);
 
+  // Load dataset info then fetch a random first row
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    setRows([]);
+    setCurrentRow(null);
     setInfo(null);
-    setSelectedIdx(null);
+    setSummary(null);
+    setEnabledClasses(null);
+    setTotalRows(0);
 
     const ds = createDataSource(dataset);
-    Promise.all([ds.getInfo(), ds.getRows({ offset: 0, length: 200 })])
-      .then(([info, rows]) => {
+    dsRef.current = ds;
+
+    (async () => {
+      try {
+        const [info, summary] = await Promise.all([
+          ds.getInfo(),
+          ds.getSummary(),
+        ]);
         if (cancelled) return;
         setInfo(info);
-        setRows(rows);
-        if (rows.length > 0) {
-          setSelectedIdx(Math.floor(Math.random() * rows.length));
+        setSummary(summary);
+        const total = info.numRows ?? 0;
+        setTotalRows(total);
+        // Enable all classes by default
+        if (summary?.classCounts) {
+          setEnabledClasses(new Set(Object.keys(summary.classCounts)));
         }
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err.message);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-      });
+        if (total > 0) {
+          const idx = summary?.classIndices
+            ? randomIndexFromClasses(summary.classIndices, null)
+            : Math.floor(Math.random() * total);
+          const rows = await ds.getRows({ offset: idx, length: 1 });
+          if (!cancelled && rows[0]) setCurrentRow(rows[0]);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [dataset]);
 
-  const pickRandom = () =>
-    setSelectedIdx(Math.floor(Math.random() * rows.length));
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    e.target.value = "";
-    const descriptor = {
-      id: `file::${file.name}`,
-      label: file.name,
-      source: "file",
-      file,
-    };
-    setDatasets((prev) => {
-      const without = prev.filter((d) => d.id !== descriptor.id);
-      return [...without, descriptor];
-    });
-    setDataset(descriptor);
+  const pickRandom = async () => {
+    if (!dsRef.current || totalRows === 0) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const idx = summary?.classIndices
+        ? randomIndexFromClasses(summary.classIndices, enabledClasses)
+        : Math.floor(Math.random() * totalRows);
+      if (idx === null) return; // no enabled classes with rows
+      const rows = await dsRef.current.getRows({ offset: idx, length: 1 });
+      if (rows[0]) setCurrentRow(rows[0]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  const toggleClass = (cls) =>
+    setEnabledClasses((prev) => {
+      const next = new Set(prev);
+      next.has(cls) ? next.delete(cls) : next.add(cls);
+      return next;
+    });
+
+  const toggleMany = (classes, on) =>
+    setEnabledClasses((prev) => {
+      const next = new Set(prev);
+      for (const cls of classes) on ? next.add(cls) : next.delete(cls);
+      return next;
+    });
+
+  const toggleAll = (on) =>
+    setEnabledClasses(
+      on ? new Set(Object.keys(summary.classCounts)) : new Set()
+    );
+
   const handleDirChange = (e) => {
-    // Snapshot the FileList into an Array BEFORE resetting the input value.
-    // FileList is a live object — e.target.value = "" empties it in place,
-    // so any Array.from() call after the reset returns [].
     const fileArray = Array.from(e.target.files);
     e.target.value = "";
     if (fileArray.length === 0) return;
@@ -88,8 +134,6 @@ export default function App() {
     setDataset(descriptor);
   };
 
-  const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
-
   return (
     <div className="app">
       <header>
@@ -98,8 +142,8 @@ export default function App() {
             <h1>StarEmbed Explorer</h1>
             <p className="meta">
               {info
-                ? `${info.numRows ?? rows.length} sources · ${dataset.source === "hf" ? dataset.dataset : (info.path ?? dataset.path ?? dataset.label)}`
-                : " "}
+                ? `${totalRows.toLocaleString()} sources · ${dataset.source === "hf" ? dataset.dataset : (info.path ?? dataset.label)}`
+                : " "}
             </p>
           </div>
           <div className="header-controls">
@@ -131,23 +175,9 @@ export default function App() {
               onChange={handleDirChange}
             />
             <button
-              className="browse-btn secondary"
-              onClick={() => fileInputRef.current.click()}
-              title="Open a JSONL file"
-            >
-              Open JSONL…
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jsonl,.json"
-              style={{ display: "none" }}
-              onChange={handleFileChange}
-            />
-            <button
               className="random-btn"
               onClick={pickRandom}
-              disabled={rows.length === 0}
+              disabled={loading || totalRows === 0}
             >
               ⚄ Random star
             </button>
@@ -157,19 +187,115 @@ export default function App() {
 
       {loading && <p className="status-msg">Loading…</p>}
       {error && <p className="error">Error: {error}</p>}
-      {!loading && !error && selectedRow && <SourceDetail row={selectedRow} />}
+      {summary && (
+        <DatasetSummary
+          summary={summary}
+          enabledClasses={enabledClasses}
+          onToggle={toggleClass}
+          onToggleMany={toggleMany}
+          onToggleAll={toggleAll}
+        />
+      )}
+      {!loading && !error && currentRow && (
+        <ErrorBoundary key={currentRow.sourceid ?? currentRow.gaia_dr3_source_id}>
+          <SourceDetail row={currentRow} />
+        </ErrorBoundary>
+      )}
+    </div>
+  );
+}
+
+function DatasetSummary({ summary, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
+  const { totalRows, classCounts, bands } = summary;
+  const allEntries = Object.entries(classCounts);
+  const top = allEntries.slice(0, 10);
+  const otherEntries = allEntries.slice(10);
+  const otherCount = otherEntries.reduce((sum, [, n]) => sum + n, 0);
+  const displayed = otherCount > 0 ? [...top, ["Other", otherCount]] : top;
+  const maxCount = displayed[0]?.[1] ?? 1;
+
+  const allOn = enabledClasses && allEntries.every(([c]) => enabledClasses.has(c));
+  const allOff = enabledClasses && allEntries.every(([c]) => !enabledClasses.has(c));
+
+  return (
+    <div className="dataset-summary">
+      <div className="summary-top">
+        <span className="summary-stat">
+          <span className="summary-stat-value">{totalRows.toLocaleString()}</span>
+          <span className="summary-stat-label">stars</span>
+        </span>
+        <span className="summary-stat">
+          <span className="summary-stat-value">{allEntries.length}</span>
+          <span className="summary-stat-label">classes</span>
+        </span>
+        {bands.length > 0 && (
+          <span className="summary-stat">
+            <span className="summary-stat-label">bands&nbsp;</span>
+            <span className="summary-stat-value">{bands.join(", ")}</span>
+          </span>
+        )}
+      </div>
+
+      {displayed.length > 0 && (
+        <>
+          <div className="class-chart-header">
+            <span className="class-chart-label">Class filter</span>
+            <button className="toggle-all-btn" onClick={() => onToggleAll(!allOn)}>
+              {allOn ? "Deselect all" : "Select all"}
+            </button>
+          </div>
+          <div className="class-chart">
+            {displayed.map(([cls, count]) => {
+              const isOther = cls === "Other";
+              const checked = isOther
+                ? otherEntries.some(([c]) => enabledClasses?.has(c))
+                : enabledClasses?.has(cls) ?? true;
+              const indeterminate = isOther &&
+                !otherEntries.every(([c]) => enabledClasses?.has(c)) &&
+                otherEntries.some(([c]) => enabledClasses?.has(c));
+              return (
+                <label key={cls} className={`class-row${checked ? "" : " class-row-off"}`}>
+                  <input
+                    type="checkbox"
+                    className="class-checkbox"
+                    checked={checked}
+                    ref={el => { if (el) el.indeterminate = indeterminate; }}
+                    onChange={() => {
+                      if (isOther) {
+                        const otherClasses = otherEntries.map(([c]) => c);
+                        const anyOn = otherClasses.some((c) => enabledClasses?.has(c));
+                        onToggleMany(otherClasses, !anyOn);
+                      } else {
+                        onToggle(cls);
+                      }
+                    }}
+                  />
+                  <span className={`class-name${isOther ? " class-other" : ""}`}>{cls}</span>
+                  <div className="class-bar-track">
+                    <div
+                      className={`class-bar-fill${isOther ? " class-bar-other" : ""}`}
+                      style={{ width: `${(count / maxCount) * 100}%` }}
+                    />
+                  </div>
+                  <span className="class-count">{count.toLocaleString()}</span>
+                  <span className="class-pct">
+                    {((count / totalRows) * 100).toFixed(1)}%
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function SourceDetail({ row }) {
-  const g = row.lightcurve.g_PTF;
-  const R = row.lightcurve.R_PTF;
-  const gGood = g?.goodflag?.filter((f) => f === 1).length ?? 0;
-  const RGood = R?.goodflag?.filter((f) => f === 1).length ?? 0;
+  const bands = Object.entries(row.lightcurve ?? {});
 
   return (
-    <div>
+    <div className="star-section">
       <div className="star-header">
         <div className="star-id-block">
           <span className="star-id-label">Gaia DR3</span>
@@ -203,8 +329,16 @@ function SourceDetail({ row }) {
           label="Radial vel."
           value={row.radial_velocity != null ? `${row.radial_velocity.toFixed(2)} km/s` : null}
         />
-        <MetaItem label="g obs (good)" value={`${g?.length ?? 0} (${gGood})`} />
-        <MetaItem label="R obs (good)" value={`${R?.length ?? 0} (${RGood})`} />
+        {bands.map(([bandKey, bandData]) => {
+          const good = bandData?.goodflag?.filter((f) => f === 1).length ?? 0;
+          return (
+            <MetaItem
+              key={bandKey}
+              label={`${bandKey} obs (good)`}
+              value={`${bandData?.length ?? 0} (${good})`}
+            />
+          );
+        })}
       </div>
 
       <div className="plot-row">
@@ -221,6 +355,22 @@ function SourceDetail({ row }) {
       </div>
     </div>
   );
+}
+
+// Pick a random global row index from enabled classes.
+// null = all classes enabled (no filtering).
+function randomIndexFromClasses(classIndices, enabledClasses) {
+  const entries = Object.entries(classIndices).filter(
+    ([cls]) => !enabledClasses || enabledClasses.has(cls)
+  );
+  const total = entries.reduce((sum, [, idxs]) => sum + idxs.length, 0);
+  if (total === 0) return null;
+  let r = Math.floor(Math.random() * total);
+  for (const [, idxs] of entries) {
+    if (r < idxs.length) return idxs[r];
+    r -= idxs.length;
+  }
+  return null;
 }
 
 function MetaItem({ label, value, mono = false }) {
