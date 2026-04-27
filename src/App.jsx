@@ -1,9 +1,7 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { createDataSource } from "./data";
 import { config } from "./config";
 import LightCurvePlot from "./components/LightCurvePlot.jsx";
-
-const PAGE_SIZE = 20;
 
 export default function App() {
   const [info, setInfo] = useState(null);
@@ -11,8 +9,6 @@ export default function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [classFilter, setClassFilter] = useState("");
-  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,6 +18,7 @@ export default function App() {
         if (cancelled) return;
         setInfo(info);
         setRows(rows);
+        setSelectedIdx(Math.floor(Math.random() * rows.length));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -36,15 +33,9 @@ export default function App() {
     };
   }, []);
 
-  const filteredRows = useMemo(() => {
-    const q = classFilter.trim().toUpperCase();
-    return rows
-      .map((row, idx) => ({ row, idx }))
-      .filter(({ row }) => !q || row.class_str?.toUpperCase().includes(q));
-  }, [rows, classFilter]);
+  const pickRandom = () =>
+    setSelectedIdx(Math.floor(Math.random() * rows.length));
 
-  const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
-  const pageRows = filteredRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const selectedRow = selectedIdx !== null ? rows[selectedIdx] : null;
 
   if (loading) return <div className="app"><p>Loading…</p></div>;
@@ -53,96 +44,24 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>StarEmbed Explorer</h1>
-        <p className="meta">
-          Source: <code>{config.dataSource}</code>
-          {" · "}
-          {info?.numRows ?? rows.length} total sources
-          {" · "}
-          g_PTF + R_PTF bands
-        </p>
+        <div className="header-row">
+          <div>
+            <h1>StarEmbed Explorer</h1>
+            <p className="meta">
+              Source: <code>{config.dataSource}</code>
+              {" · "}
+              {info?.numRows ?? rows.length} sources
+              {" · "}
+              g_PTF + R_PTF
+            </p>
+          </div>
+          <button className="random-btn" onClick={pickRandom}>
+            ⚄ Random star
+          </button>
+        </div>
       </header>
 
-      <div className="explorer-layout">
-        <section className="source-panel">
-          <div className="panel-toolbar">
-            <input
-              className="search-input"
-              type="search"
-              placeholder="Filter by class (EW, RR, CEP…)"
-              value={classFilter}
-              onChange={(e) => {
-                setClassFilter(e.target.value);
-                setPage(0);
-              }}
-            />
-            <span className="count-badge">{filteredRows.length}</span>
-            <button
-              className="random-btn"
-              onClick={() => setSelectedIdx(Math.floor(Math.random() * rows.length))}
-              title="Jump to a random source"
-            >
-              ⚄ Random
-            </button>
-          </div>
-
-          <div className="table-scroll">
-            <table className="source-table">
-              <thead>
-                <tr>
-                  <th>Source ID</th>
-                  <th>Class</th>
-                  <th>Period (d)</th>
-                  <th>g</th>
-                  <th>R</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map(({ row, idx }) => (
-                  <tr
-                    key={row.sourceid}
-                    className={idx === selectedIdx ? "selected" : ""}
-                    onClick={() => setSelectedIdx(idx)}
-                  >
-                    <td className="mono">{row.sourceid}</td>
-                    <td>
-                      <span className="class-badge">{row.class_str ?? "—"}</span>
-                    </td>
-                    <td>{row.period != null ? row.period.toFixed(4) : "—"}</td>
-                    <td>{row.lightcurve.g_PTF?.length ?? 0}</td>
-                    <td>{row.lightcurve.R_PTF?.length ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-                ←
-              </button>
-              <span>
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                disabled={page >= totalPages - 1}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                →
-              </button>
-            </div>
-          )}
-        </section>
-
-        <section className="detail-panel">
-          {selectedRow ? (
-            <SourceDetail row={selectedRow} />
-          ) : (
-            <p className="empty-hint">← Select a source to explore its light curve.</p>
-          )}
-        </section>
-      </div>
+      {selectedRow && <SourceDetail row={selectedRow} />}
     </div>
   );
 }
@@ -154,13 +73,17 @@ function SourceDetail({ row }) {
   const RGood = R?.goodflag?.filter((f) => f === 1).length ?? 0;
 
   return (
-    <div className="detail-inner">
-      <div className="detail-titlebar">
-        <h2 className="mono">{row.sourceid}</h2>
+    <div>
+      <div className="star-header">
+        <div className="star-id-block">
+          <span className="star-id-label">Gaia DR3</span>
+          <span className="star-id-value mono">{row.gaia_dr3_source_id}</span>
+        </div>
         <span className="class-badge large">{row.class_str ?? "—"}</span>
       </div>
 
       <div className="meta-grid">
+        <MetaItem label="PTF source ID" value={row.sourceid} mono />
         <MetaItem label="Period" value={row.period != null ? `${row.period.toFixed(6)} d` : null} />
         <MetaItem label="RA" value={row.gaia_dr3_ra?.toFixed(6)} />
         <MetaItem label="Dec" value={row.gaia_dr3_dec?.toFixed(6)} />
@@ -184,7 +107,6 @@ function SourceDetail({ row }) {
           label="Radial vel."
           value={row.radial_velocity != null ? `${row.radial_velocity.toFixed(2)} km/s` : null}
         />
-        <MetaItem label="Gaia DR3 ID" value={row.gaia_dr3_source_id} mono />
         <MetaItem label="g obs (good)" value={`${g?.length ?? 0} (${gGood})`} />
         <MetaItem label="R obs (good)" value={`${R?.length ?? 0} (${RGood})`} />
       </div>
@@ -195,7 +117,9 @@ function SourceDetail({ row }) {
           <LightCurvePlot row={row} mode="raw" />
         </div>
         <div className="plot-col">
-          <p className="plot-label">Phase-folded {row.period ? `(P = ${row.period.toFixed(4)} d)` : ""}</p>
+          <p className="plot-label">
+            Phase-folded{row.period ? ` — P = ${row.period.toFixed(4)} d` : ""}
+          </p>
           <LightCurvePlot row={row} mode="folded" />
         </div>
       </div>
