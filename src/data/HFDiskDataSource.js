@@ -50,6 +50,7 @@ export class HFDiskDataSource extends DataSource {
       const classIndices = new Map(); // class → global row indices
       const skyRa = [];
       const skyDec = [];
+      const skyCls = [];
       let bands = null;
       let globalIdx = 0;
 
@@ -77,7 +78,11 @@ export class HFDiskDataSource extends DataSource {
           if (raCol && decCol) {
             const ra = raCol.get(i);
             const dec = decCol.get(i);
-            if (ra != null && dec != null) { skyRa.push(ra); skyDec.push(dec); }
+            if (ra != null && dec != null) {
+              skyRa.push(ra);
+              skyDec.push(dec);
+              skyCls.push(classCol ? (classCol.get(i) ?? '(none)') : '(none)');
+            }
           }
           globalIdx++;
         }
@@ -98,13 +103,13 @@ export class HFDiskDataSource extends DataSource {
       const skyPoints = [];
       const n = skyRa.length;
       if (n <= SKY_SAMPLE) {
-        for (let i = 0; i < n; i++) skyPoints.push({ ra: skyRa[i], dec: skyDec[i] });
+        for (let i = 0; i < n; i++) skyPoints.push({ ra: skyRa[i], dec: skyDec[i], cls: skyCls[i] });
       } else {
         const indices = Array.from({ length: n }, (_, i) => i);
         for (let i = 0; i < SKY_SAMPLE; i++) {
           const j = i + Math.floor(Math.random() * (n - i));
           [indices[i], indices[j]] = [indices[j], indices[i]];
-          skyPoints.push({ ra: skyRa[indices[i]], dec: skyDec[indices[i]] });
+          skyPoints.push({ ra: skyRa[indices[i]], dec: skyDec[indices[i]], cls: skyCls[indices[i]] });
         }
       }
 

@@ -1,39 +1,118 @@
-import { useEffect, useState, useRef, Component } from "react";
-import { createDataSource } from "./data";
-import { DATASETS } from "./datasets.js";
-import LightCurvePlot from "./components/LightCurvePlot.jsx";
-import SkyPlot from "./components/SkyPlot.jsx";
+import { useEffect, useState, useRef, useMemo, Component } from 'react';
+import { createDataSource } from './data';
+import { DATASETS } from './datasets.js';
+import SkyMapCanvas from './components/SkyMapCanvas.jsx';
+import LightCurveChart from './components/LightCurveChart.jsx';
+
+// ── Design tokens ─────────────────────────────────────────────
+
+const GLASS = {
+  background: 'rgba(11,15,28,0.72)',
+  border: '1px solid rgba(125,169,255,0.18)',
+  boxShadow: '0 16px 48px rgba(0,0,0,0.55), inset 0 1px 0 rgba(160,190,255,0.08)',
+  backdropFilter: 'blur(18px) saturate(140%)',
+  borderRadius: 12,
+  color: '#e8ecf6',
+};
+
+const KICKER = {
+  fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+  fontSize: 9.5,
+  letterSpacing: 1.4,
+  textTransform: 'uppercase',
+  color: 'rgba(232,236,246,0.55)',
+};
+
+const ACCENT = '#7da9ff';
+
+// Known class name → colour hints. Unknown classes get FALLBACK colours by index.
+// These are purely cosmetic defaults — the actual class list always comes from the data.
+const CLASS_COLOR_HINTS = {
+  EW: '#7da9ff', RRC: '#9c8cff', EA: '#f0a02b', RRAB: '#ff8a72',
+  RS: '#3bbd8e', RRD: '#c45ad8', LPV: '#ffd166', EB: '#5dd6e6',
+  DSCT: '#9c8cff', PCEB: '#e8c77a',
+};
+const FALLBACK_COLORS = [
+  '#7da9ff', '#f0a02b', '#3bbd8e', '#c45ad8',
+  '#ffd166', '#5dd6e6', '#ff8a72', '#9c8cff', '#e8c77a', '#a4c9b0',
+];
+const BAND_PALETTE = [
+  '#7da9ff', '#ff8a72', '#9c8cff', '#3bbd8e', '#ffd166', '#5dd6e6',
+];
+
+function buildClassColors(classCounts) {
+  if (!classCounts) return {};
+  const colors = {};
+  let fi = 0;
+  for (const cls of Object.keys(classCounts)) {
+    colors[cls] = CLASS_COLOR_HINTS[cls] ?? FALLBACK_COLORS[fi++ % FALLBACK_COLORS.length];
+  }
+  return colors;
+}
+
+function buildBandColors(bands) {
+  if (!bands) return {};
+  return Object.fromEntries(bands.map((b, i) => [b, BAND_PALETTE[i % BAND_PALETTE.length]]));
+}
+
+function randomIdx(classIndices, enabledClasses) {
+  const entries = Object.entries(classIndices).filter(
+    ([cls]) => !enabledClasses || enabledClasses.has(cls)
+  );
+  const total = entries.reduce((s, [, idxs]) => s + idxs.length, 0);
+  if (!total) return null;
+  let r = Math.floor(Math.random() * total);
+  for (const [, idxs] of entries) {
+    if (r < idxs.length) return idxs[r];
+    r -= idxs.length;
+  }
+  return null;
+}
+
+// ── Error boundary ─────────────────────────────────────────────
 
 class ErrorBoundary extends Component {
-  constructor(props) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { error };
-  }
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
   render() {
     if (this.state.error) {
-      return <p className="error">Render error: {this.state.error.message}</p>;
+      return (
+        <div style={{ padding: 16, fontFamily: 'JetBrains Mono, monospace',
+          fontSize: 11, color: '#ff8a72' }}>
+          {this.state.error.message}
+        </div>
+      );
     }
     return this.props.children;
   }
 }
+
+// ── Main App ───────────────────────────────────────────────────
 
 export default function App() {
   const [datasets, setDatasets] = useState(DATASETS);
   const [dataset, setDataset] = useState(DATASETS[0]);
   const [info, setInfo] = useState(null);
   const [summary, setSummary] = useState(null);
-  const [enabledClasses, setEnabledClasses] = useState(null); // null = all
+  const [enabledClasses, setEnabledClasses] = useState(null);
   const [totalRows, setTotalRows] = useState(0);
   const [currentRow, setCurrentRow] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [filterOpen, setFilterOpen] = useState(true);
+  const [bottomH, setBottomH] = useState(280);
+  const [activeBands, setActiveBands] = useState(null);
+
+  const containerRef = useRef(null);
   const dsRef = useRef(null);
   const dirInputRef = useRef(null);
 
-  // Load dataset info then fetch a random first row
+  // Reset activeBands whenever a new dataset summary arrives.
+  useEffect(() => {
+    if (summary?.bands) setActiveBands(new Set(summary.bands));
+  }, [summary]);
+
+  // Load dataset — fetch summary + first random star.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -42,29 +121,24 @@ export default function App() {
     setInfo(null);
     setEnabledClasses(null);
     setTotalRows(0);
-    // Leave summary visible (sky plot stays on screen) until the new one arrives
 
     const ds = createDataSource(dataset);
     dsRef.current = ds;
 
     (async () => {
       try {
-        const [info, summary] = await Promise.all([
-          ds.getInfo(),
-          ds.getSummary(),
-        ]);
+        const [info, summary] = await Promise.all([ds.getInfo(), ds.getSummary()]);
         if (cancelled) return;
         setInfo(info);
         setSummary(summary);
         const total = info.numRows ?? 0;
         setTotalRows(total);
-        // Enable all classes by default
         if (summary?.classCounts) {
           setEnabledClasses(new Set(Object.keys(summary.classCounts)));
         }
         if (total > 0) {
           const idx = summary?.classIndices
-            ? randomIndexFromClasses(summary.classIndices, null)
+            ? randomIdx(summary.classIndices, null)
             : Math.floor(Math.random() * total);
           const rows = await ds.getRows({ offset: idx, length: 1 });
           if (!cancelled && rows[0]) setCurrentRow(rows[0]);
@@ -85,9 +159,9 @@ export default function App() {
     setError(null);
     try {
       const idx = summary?.classIndices
-        ? randomIndexFromClasses(summary.classIndices, enabledClasses)
+        ? randomIdx(summary.classIndices, enabledClasses)
         : Math.floor(Math.random() * totalRows);
-      if (idx === null) return; // no enabled classes with rows
+      if (idx === null) return;
       const rows = await dsRef.current.getRows({ offset: idx, length: 1 });
       if (rows[0]) setCurrentRow(rows[0]);
     } catch (err) {
@@ -104,291 +178,544 @@ export default function App() {
       return next;
     });
 
-  const toggleMany = (classes, on) =>
-    setEnabledClasses((prev) => {
+  const toggleAllClasses = (on) =>
+    setEnabledClasses(on ? new Set(Object.keys(summary.classCounts)) : new Set());
+
+  const toggleBand = (b) =>
+    setActiveBands((prev) => {
       const next = new Set(prev);
-      for (const cls of classes) on ? next.add(cls) : next.delete(cls);
+      next.has(b) ? next.delete(b) : next.add(b);
       return next;
     });
 
-  const toggleAll = (on) =>
-    setEnabledClasses(
-      on ? new Set(Object.keys(summary.classCounts)) : new Set()
-    );
-
   const handleDirChange = (e) => {
     const fileArray = Array.from(e.target.files);
-    e.target.value = "";
-    if (fileArray.length === 0) return;
+    e.target.value = '';
+    if (!fileArray.length) return;
     const dirName =
-      fileArray[0]?.webkitRelativePath?.split("/")[0] ?? fileArray[0]?.name ?? "dataset";
-    const descriptor = {
-      id: `hf-disk::${dirName}`,
-      label: dirName,
-      source: "hf-disk",
-      files: fileArray,
-    };
-    setDatasets((prev) => {
-      const without = prev.filter((d) => d.id !== descriptor.id);
-      return [...without, descriptor];
-    });
+      fileArray[0]?.webkitRelativePath?.split('/')[0] ?? fileArray[0]?.name ?? 'dataset';
+    const descriptor = { id: `hf-disk::${dirName}`, label: dirName, source: 'hf-disk', files: fileArray };
+    setDatasets((prev) => [...prev.filter((d) => d.id !== descriptor.id), descriptor]);
     setDataset(descriptor);
   };
 
+  const onResizeStart = (e) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = bottomH;
+    const move = (ev) => {
+      const maxH = (containerRef.current?.clientHeight ?? 900) - 120;
+      setBottomH(Math.max(150, Math.min(maxH, startH + (startY - ev.clientY))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // Derived display data — all dynamic, nothing hardcoded.
+  const classColors = useMemo(() => buildClassColors(summary?.classCounts), [summary]);
+  const bandColors = useMemo(() => buildBandColors(summary?.bands), [summary]);
+
+  const classes = useMemo(() => {
+    if (!summary?.classCounts) return [];
+    const total = summary.totalRows || 1;
+    return Object.entries(summary.classCounts).map(([id, count]) => ({
+      id, count, pct: (count / total) * 100,
+    }));
+  }, [summary]);
+
+  const allClassesOn = enabledClasses != null && classes.length > 0 &&
+    classes.every((c) => enabledClasses.has(c.id));
+
+  const maxClassCount = classes[0]?.count ?? 1;
+  const bands = summary?.bands ?? [];
+  const row = currentRow;
+  const cls = row?.class_str ?? '—';
+  const clsColor = classColors[cls] || ACCENT;
+
+  const datasetName = info?.path ?? dataset.label;
+
   return (
-    <div className="app">
-      <header>
-        <div className="header-row">
-          <div>
-            <h1>StarEmbed Explorer <span className="title-acronym">(SEE)</span></h1>
-          </div>
-          <div className="header-controls">
-            <select
-              className="dataset-select"
-              value={dataset.id}
-              onChange={(e) =>
-                setDataset(datasets.find((d) => d.id === e.target.value))
-              }
-            >
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-            <button
-              className="browse-btn"
-              onClick={() => dirInputRef.current.click()}
-              title="Open an HF dataset directory (Arrow shards)"
-            >
-              Open HF dataset…
-            </button>
-            <input
-              ref={dirInputRef}
-              type="file"
-              webkitdirectory=""
-              style={{ display: "none" }}
-              onChange={handleDirChange}
-            />
-          </div>
+    <div
+      ref={containerRef}
+      style={{
+        position: 'fixed', inset: 0, overflow: 'hidden',
+        background: 'radial-gradient(ellipse at 30% 15%, #14213d 0%, #060814 70%)',
+        color: '#e8ecf6',
+        fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
+      }}
+    >
+      {/* ── Layer 1: Sky map ── */}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+        <SkyMapCanvas
+          skyPoints={summary?.skyPoints ?? []}
+          currentRow={row}
+          enabledClasses={enabledClasses}
+          classColors={classColors}
+        />
+      </div>
+
+      {/* ── Header ── */}
+      <header style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 22px',
+      }}>
+        {/* Logo + wordmark */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+            <defs>
+              <radialGradient id="see-logo-g" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#dfe7ff" />
+                <stop offset="100%" stopColor="#7da9ff" />
+              </radialGradient>
+            </defs>
+            <circle cx="10" cy="10" r="2.4" fill="url(#see-logo-g)" />
+            <circle cx="10" cy="10" r="7" fill="none" stroke="#7da9ff"
+              strokeWidth="0.8" strokeOpacity="0.5" />
+            <ellipse cx="10" cy="10" rx="8.8" ry="3" fill="none"
+              stroke="#ff8a72" strokeWidth="0.5" strokeOpacity="0.55"
+              transform="rotate(20 10 10)" />
+          </svg>
+          <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: -0.2 }}>
+            StarEmbed Explorer
+          </span>
+          <span style={{
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
+            color: 'rgba(232,236,246,0.5)', letterSpacing: 1.2,
+          }}>SEE</span>
+        </div>
+
+        {/* Dataset controls */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select
+            value={dataset.id}
+            onChange={(e) => setDataset(datasets.find((d) => d.id === e.target.value))}
+            style={{
+              padding: '6px 11px', borderRadius: 7,
+              border: '1px solid rgba(125,169,255,0.2)',
+              background: 'rgba(125,169,255,0.08)',
+              color: '#e8ecf6', fontSize: 12, cursor: 'pointer',
+              fontFamily: "'Inter Tight', system-ui, sans-serif",
+            }}
+          >
+            {datasets.map((d) => (
+              <option key={d.id} value={d.id} style={{ background: '#0e1428' }}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => dirInputRef.current.click()}
+            style={{
+              padding: '6px 11px', borderRadius: 7,
+              border: '1px solid rgba(232,236,246,0.15)',
+              background: 'transparent', color: '#e8ecf6',
+              fontSize: 12, cursor: 'pointer',
+            }}
+          >
+            Open HF dataset ↗
+          </button>
+          <input
+            ref={dirInputRef} type="file" webkitdirectory=""
+            style={{ display: 'none' }} onChange={handleDirChange}
+          />
         </div>
       </header>
 
-      {loading && <p className="status-msg">Loading…</p>}
-      {error && <p className="error">Error: {error}</p>}
+      {/* ── Dataset card (top-left) ── */}
       {summary && (
-        <DatasetSummary
-          summary={summary}
-          datasetLabel={dataset.source === "hf" ? dataset.dataset : (info?.path ?? dataset.label)}
-          currentRow={currentRow}
-          enabledClasses={enabledClasses}
-          onToggle={toggleClass}
-          onToggleMany={toggleMany}
-          onToggleAll={toggleAll}
-        />
-      )}
-      {!loading && !error && currentRow && (
-        <ErrorBoundary key={currentRow.sourceid ?? currentRow.gaia_dr3_source_id}>
-          <SourceDetail row={currentRow} onRandom={pickRandom} randomDisabled={loading} />
-        </ErrorBoundary>
-      )}
-    </div>
-  );
-}
-
-function DatasetSummary({ summary, datasetLabel, currentRow, enabledClasses, onToggle, onToggleMany, onToggleAll }) {
-  const { totalRows, classCounts, bands, skyPoints } = summary;
-  const allEntries = Object.entries(classCounts);
-  const top = allEntries.slice(0, 10);
-  const otherEntries = allEntries.slice(10);
-  const otherCount = otherEntries.reduce((sum, [, n]) => sum + n, 0);
-  const displayed = otherCount > 0 ? [...top, ["Other", otherCount]] : top;
-  const maxCount = displayed[0]?.[1] ?? 1;
-
-  const allOn = enabledClasses && allEntries.every(([c]) => enabledClasses.has(c));
-  const allOff = enabledClasses && allEntries.every(([c]) => !enabledClasses.has(c));
-
-  return (
-    <div className="dataset-summary">
-      {datasetLabel && (
-        <div className="summary-dataset-block">
-          <span className="summary-dataset-label">Dataset</span>
-          <span className="summary-dataset-name mono">{datasetLabel}</span>
+        <div style={{
+          position: 'absolute', top: 64, left: 22, zIndex: 5,
+          ...GLASS, padding: '14px 18px', minWidth: 220,
+        }}>
+          <div style={KICKER}>Dataset</div>
+          <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: -0.4,
+            marginTop: 2, marginBottom: 12, wordBreak: 'break-all' }}>
+            {datasetName}
+          </div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <StatBlock n={summary.totalRows.toLocaleString()} l="STARS" />
+            <StatBlock n={classes.length} l="CLASSES" />
+          </div>
+          {bands.length > 0 && (
+            <div style={{
+              marginTop: 10, fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 10.5, color: 'rgba(232,236,246,0.5)', letterSpacing: 1.1,
+            }}>
+              BANDS ·{' '}
+              {bands.map((b, i) => (
+                <span key={b} style={{ color: bandColors[b] }}>
+                  {i > 0 ? ' · ' : ''}{b}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
-      <div className="summary-body">
-      <div className="summary-sky">
-        <SkyPlot skyPoints={skyPoints ?? []} currentRow={currentRow} />
-      </div>
-      <div className="summary-stats">
-      <div className="summary-top">
-        <span className="summary-stat">
-          <span className="summary-stat-value">{totalRows.toLocaleString()}</span>
-          <span className="summary-stat-label">stars</span>
-        </span>
-        <span className="summary-stat">
-          <span className="summary-stat-value">{allEntries.length}</span>
-          <span className="summary-stat-label">classes</span>
-        </span>
-        {bands.length > 0 && (
-          <span className="summary-stat">
-            <span className="summary-stat-label">bands&nbsp;</span>
-            <span className="summary-stat-value">{bands.join(", ")}</span>
-          </span>
+
+      {/* ── Class filter (top-right, collapsible) ── */}
+      {classes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 64, right: 22, zIndex: 5,
+          ...GLASS,
+          padding: filterOpen ? '14px 16px' : '10px 14px',
+          width: filterOpen ? 280 : 'auto',
+          transition: 'width 0.18s',
+        }}>
+          {/* Header row */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: filterOpen ? 8 : 0,
+          }}>
+            <button
+              onClick={() => setFilterOpen((o) => !o)}
+              style={{
+                ...KICKER, border: 'none', background: 'transparent',
+                cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" style={{
+                transform: filterOpen ? 'rotate(0deg)' : 'rotate(-90deg)',
+                transition: 'transform 0.18s', flexShrink: 0,
+              }}>
+                <path d="M2 4l3.5 3.5L9 4" stroke="currentColor" strokeWidth="1.4"
+                  fill="none" strokeLinecap="round" />
+              </svg>
+              Class filter · {enabledClasses?.size ?? 0}/{classes.length}
+            </button>
+            {filterOpen && (
+              <button
+                onClick={() => toggleAllClasses(!allClassesOn)}
+                style={{
+                  border: 'none', background: 'transparent', color: ACCENT,
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+                  letterSpacing: 1.1, textTransform: 'uppercase', cursor: 'pointer', padding: 0,
+                }}
+              >
+                {allClassesOn ? 'Clear' : 'All'}
+              </button>
+            )}
+          </div>
+
+          {/* Class rows */}
+          {filterOpen && (
+            <div style={{
+              display: 'flex', flexDirection: 'column', gap: 4,
+              maxHeight: 300, overflowY: 'auto',
+            }}>
+              {classes.map((c) => {
+                const isOn = enabledClasses?.has(c.id) ?? true;
+                const color = classColors[c.id] || ACCENT;
+                const barPct = (c.count / maxClassCount) * 100;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => toggleClass(c.id)}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '14px 1fr 1fr 54px 38px',
+                      alignItems: 'center', gap: 8,
+                      border: 'none', background: 'transparent',
+                      padding: '2px 0', cursor: 'pointer', textAlign: 'left',
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                      color: '#e8ecf6', opacity: isOn ? 1 : 0.42,
+                      transition: 'opacity 0.15s',
+                    }}
+                  >
+                    {/* Checkbox */}
+                    <span style={{
+                      width: 12, height: 12, borderRadius: 3, flexShrink: 0,
+                      border: `1px solid ${isOn ? color : 'rgba(255,255,255,0.3)'}`,
+                      background: isOn ? color : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      {isOn && (
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                          <path d="M1.5 4.2L3.2 5.8L6.5 2" stroke="#0a0e1a"
+                            strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    {/* Class name */}
+                    <span style={{
+                      fontWeight: 600, letterSpacing: 0.3,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{c.id}</span>
+                    {/* Bar */}
+                    <span style={{
+                      height: 4, background: 'rgba(255,255,255,0.08)',
+                      borderRadius: 2, position: 'relative', overflow: 'hidden',
+                    }}>
+                      <span style={{
+                        position: 'absolute', top: 0, left: 0, height: '100%',
+                        width: `${barPct}%`, background: color, borderRadius: 2,
+                      }} />
+                    </span>
+                    {/* Count */}
+                    <span style={{
+                      textAlign: 'right', color: 'rgba(232,236,246,0.5)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>{c.count.toLocaleString()}</span>
+                    {/* Pct */}
+                    <span style={{
+                      textAlign: 'right', color: 'rgba(232,236,246,0.5)',
+                      fontVariantNumeric: 'tabular-nums',
+                    }}>{c.pct.toFixed(1)}%</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Band toggle pill (floating above drawer) ── */}
+      {bands.length > 0 && (
+        <div style={{
+          position: 'absolute', bottom: bottomH + 28,
+          left: '50%', transform: 'translateX(-50%)',
+          zIndex: 6, display: 'flex', gap: 6, padding: 5,
+          ...GLASS, borderRadius: 999,
+        }}>
+          {bands.map((b) => {
+            const isOn = !activeBands || activeBands.has(b);
+            const color = bandColors[b] || ACCENT;
+            return (
+              <button
+                key={b}
+                onClick={() => toggleBand(b)}
+                style={{
+                  padding: '4px 11px', borderRadius: 999, border: 'none',
+                  background: isOn ? color + '22' : 'transparent',
+                  color: '#e8ecf6', opacity: isOn ? 1 : 0.4,
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
+                  fontWeight: 600, cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  transition: 'opacity 0.15s, background 0.15s',
+                }}
+              >
+                <span style={{
+                  width: 7, height: 7, borderRadius: 4,
+                  background: color, flexShrink: 0,
+                }} />
+                {b}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Bottom drawer ── */}
+      <div style={{
+        position: 'absolute', bottom: 18, left: 22, right: 22, zIndex: 5,
+        ...GLASS, padding: 0, height: bottomH,
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Resize grip */}
+        <ResizeGrip onPointerDown={onResizeStart} />
+
+        {row ? (
+          <div style={{
+            flex: 1, padding: '20px 24px',
+            display: 'grid', gridTemplateColumns: '300px 1fr 1fr',
+            gap: 24, minHeight: 0, overflow: 'hidden',
+          }}>
+            {/* ── Metadata column ── */}
+            <div style={{
+              borderRight: '1px solid rgba(125,169,255,0.12)',
+              paddingRight: 22,
+              display: 'flex', flexDirection: 'column',
+              minWidth: 0, overflowY: 'auto',
+            }}>
+              {/* Header: kicker + class chip + RANDOM */}
+              <div style={{
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', marginBottom: 6,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={KICKER}>Gaia DR3</span>
+                  <span style={{
+                    fontSize: 10, padding: '2px 7px', borderRadius: 4,
+                    background: clsColor, color: '#0b0f1c',
+                    fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, letterSpacing: 0.4,
+                  }}>{cls}</span>
+                </div>
+                <button
+                  onClick={pickRandom}
+                  disabled={loading}
+                  style={{
+                    border: 'none', background: 'transparent', color: ACCENT,
+                    cursor: loading ? 'default' : 'pointer',
+                    padding: '3px 5px', borderRadius: 5, opacity: loading ? 0.45 : 1,
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, letterSpacing: 0.6,
+                    transition: 'opacity 0.15s',
+                  }}
+                >
+                  <svg width="11" height="11" viewBox="0 0 13 13" fill="none"
+                    stroke="currentColor" strokeWidth="1.4"
+                    strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 3.5h3l5 6h3M2 9.5h3l1.5-1.8M9 8.5l3 1L11 12.5" />
+                  </svg>
+                  RANDOM
+                </button>
+              </div>
+
+              {/* Star ID */}
+              <div style={{
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 15,
+                fontWeight: 500, letterSpacing: -0.3,
+                wordBreak: 'break-all', lineHeight: 1.3, marginBottom: 14,
+              }}>
+                {row.gaia_dr3_source_id ?? row.sourceid ?? '—'}
+              </div>
+
+              {/* KV grid — columns determined by available data fields */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr 1fr',
+                gap: '10px 16px',
+              }}>
+                <KV l="PERIOD"
+                  v={row.period != null ? row.period.toFixed(4) + ' d' : '—'} />
+                <KV l="PARALLAX"
+                  v={row.parallax != null ? row.parallax.toFixed(3) + ' mas' : '—'} />
+                <KV l="RA"
+                  v={row.gaia_dr3_ra?.toFixed(4) ?? '—'} />
+                <KV l="DEC"
+                  v={row.gaia_dr3_dec?.toFixed(4) ?? '—'} />
+                <KV l="PM RA"
+                  v={row.pmra != null ? row.pmra.toFixed(2) + ' mas/yr' : '—'} />
+                <KV l="PM Dec"
+                  v={row.pmdec != null ? row.pmdec.toFixed(2) + ' mas/yr' : '—'} />
+                <KV l="RV"
+                  v={row.radial_velocity != null
+                    ? row.radial_velocity.toFixed(2) + ' km/s' : '—'} />
+                <KV l="PTF ID" v={row.sourceid ?? '—'} />
+              </div>
+            </div>
+
+            {/* ── Chart columns ── */}
+            <ChartCol title="Raw observations">
+              <ErrorBoundary key={`raw-${row.gaia_dr3_source_id ?? row.sourceid}`}>
+                <LightCurveChart
+                  row={row} mode="raw"
+                  bandColors={bandColors} activeBands={activeBands}
+                />
+              </ErrorBoundary>
+            </ChartCol>
+
+            <ChartCol title={`Phase-folded${row.period ? ` · P=${row.period.toFixed(4)} d` : ''}`}>
+              <ErrorBoundary key={`phase-${row.gaia_dr3_source_id ?? row.sourceid}`}>
+                <LightCurveChart
+                  row={row} mode="phase"
+                  bandColors={bandColors} activeBands={activeBands}
+                />
+              </ErrorBoundary>
+            </ChartCol>
+          </div>
+        ) : (
+          <div style={{
+            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {error ? (
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+                color: '#ff8a72' }}>{error}</span>
+            ) : (
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12,
+                color: 'rgba(232,236,246,0.35)', letterSpacing: 1.4 }}>
+                {loading ? 'LOADING…' : 'NO DATA'}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {displayed.length > 0 && (
-        <>
-          <div className="class-chart-header">
-            <span className="class-chart-label">Class filter</span>
-            <button className="toggle-all-btn" onClick={() => onToggleAll(!allOn)}>
-              {allOn ? "Deselect all" : "Select all"}
-            </button>
-          </div>
-          <div className="class-chart">
-            {displayed.map(([cls, count]) => {
-              const isOther = cls === "Other";
-              const checked = isOther
-                ? otherEntries.some(([c]) => enabledClasses?.has(c))
-                : enabledClasses?.has(cls) ?? true;
-              const indeterminate = isOther &&
-                !otherEntries.every(([c]) => enabledClasses?.has(c)) &&
-                otherEntries.some(([c]) => enabledClasses?.has(c));
-              return (
-                <label key={cls} className={`class-row${checked ? "" : " class-row-off"}`}>
-                  <input
-                    type="checkbox"
-                    className="class-checkbox"
-                    checked={checked}
-                    ref={el => { if (el) el.indeterminate = indeterminate; }}
-                    onChange={() => {
-                      if (isOther) {
-                        const otherClasses = otherEntries.map(([c]) => c);
-                        const anyOn = otherClasses.some((c) => enabledClasses?.has(c));
-                        onToggleMany(otherClasses, !anyOn);
-                      } else {
-                        onToggle(cls);
-                      }
-                    }}
-                  />
-                  <span className={`class-name${isOther ? " class-other" : ""}`}>{cls}</span>
-                  <div className="class-bar-track">
-                    <div
-                      className={`class-bar-fill${isOther ? " class-bar-other" : ""}`}
-                      style={{ width: `${(count / maxCount) * 100}%` }}
-                    />
-                  </div>
-                  <span className="class-count">{count.toLocaleString()}</span>
-                  <span className="class-pct">
-                    {((count / totalRows) * 100).toFixed(1)}%
-                  </span>
-                </label>
-              );
-            })}
-          </div>
-        </>
+      {/* Subtle loading pulse in the header area when fetching a new star */}
+      {loading && row && (
+        <div style={{
+          position: 'absolute', top: 16, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 20, fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+          color: 'rgba(232,236,246,0.45)', letterSpacing: 1.8, pointerEvents: 'none',
+        }}>
+          LOADING
+        </div>
       )}
-      </div>{/* summary-stats */}
-      </div>{/* summary-body */}
     </div>
   );
 }
 
-function SourceDetail({ row, onRandom, randomDisabled }) {
-  const bands = Object.entries(row.lightcurve ?? {});
+// ── Small presentational components ────────────────────────────
 
+function ResizeGrip({ onPointerDown }) {
+  const [hover, setHover] = useState(false);
   return (
-    <div className="star-section">
-      <div className="star-header">
-        <div className="star-id-block">
-          <span className="star-id-label">Gaia DR3</span>
-          <span className="star-id-value mono">{row.gaia_dr3_source_id}</span>
-        </div>
-        <span className="class-badge large">{row.class_str ?? "—"}</span>
-        <button
-          className="random-btn-primary"
-          onClick={onRandom}
-          disabled={randomDisabled}
-        >
-          ⚄ Random star
-        </button>
-      </div>
-
-      <div className="meta-grid">
-        <MetaItem label="PTF source ID" value={row.sourceid} mono />
-        <MetaItem label="Period" value={row.period != null ? `${row.period.toFixed(6)} d` : null} />
-        <MetaItem label="RA" value={row.gaia_dr3_ra?.toFixed(6)} />
-        <MetaItem label="Dec" value={row.gaia_dr3_dec?.toFixed(6)} />
-        <MetaItem
-          label="Parallax"
-          value={
-            row.parallax != null
-              ? `${row.parallax.toFixed(3)} ± ${row.parallax_error?.toFixed(3)} mas`
-              : null
-          }
-        />
-        <MetaItem
-          label="PM (RA, Dec)"
-          value={
-            row.pmra != null
-              ? `${row.pmra.toFixed(2)}, ${row.pmdec?.toFixed(2)} mas/yr`
-              : null
-          }
-        />
-        <MetaItem
-          label="Radial vel."
-          value={row.radial_velocity != null ? `${row.radial_velocity.toFixed(2)} km/s` : null}
-        />
-        {bands.map(([bandKey, bandData]) => {
-          const good = bandData?.goodflag?.filter((f) => f === 1).length ?? 0;
-          return (
-            <MetaItem
-              key={bandKey}
-              label={`${bandKey} obs (good)`}
-              value={`${bandData?.length ?? 0} (${good})`}
-            />
-          );
-        })}
-      </div>
-
-      <div className="plot-row">
-        <div className="plot-col">
-          <p className="plot-label">Raw</p>
-          <LightCurvePlot row={row} mode="raw" />
-        </div>
-        <div className="plot-col">
-          <p className="plot-label">
-            Phase-folded{row.period ? ` — P = ${row.period.toFixed(4)} d` : ""}
-          </p>
-          <LightCurvePlot row={row} mode="folded" />
-        </div>
-      </div>
+    <div
+      onPointerDown={onPointerDown}
+      style={{
+        position: 'absolute', top: -10, left: 0, right: 0, height: 18,
+        cursor: 'ns-resize', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', zIndex: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 44, height: 5, borderRadius: 3,
+          background: hover ? 'rgba(125,169,255,0.7)' : 'rgba(125,169,255,0.35)',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+      />
     </div>
   );
 }
 
-// Pick a random global row index from enabled classes.
-// null = all classes enabled (no filtering).
-function randomIndexFromClasses(classIndices, enabledClasses) {
-  const entries = Object.entries(classIndices).filter(
-    ([cls]) => !enabledClasses || enabledClasses.has(cls)
+function StatBlock({ n, l }) {
+  return (
+    <div>
+      <div style={{
+        fontSize: 16, fontWeight: 600, color: '#e8ecf6',
+        fontVariantNumeric: 'tabular-nums',
+        fontFamily: 'JetBrains Mono, monospace',
+      }}>{n}</div>
+      <div style={{
+        fontSize: 9, letterSpacing: 1.3, color: 'rgba(232,236,246,0.5)',
+        textTransform: 'uppercase', marginTop: 2,
+        fontFamily: 'JetBrains Mono, monospace',
+      }}>{l}</div>
+    </div>
   );
-  const total = entries.reduce((sum, [, idxs]) => sum + idxs.length, 0);
-  if (total === 0) return null;
-  let r = Math.floor(Math.random() * total);
-  for (const [, idxs] of entries) {
-    if (r < idxs.length) return idxs[r];
-    r -= idxs.length;
-  }
-  return null;
 }
 
-function MetaItem({ label, value, mono = false }) {
+function KV({ l, v }) {
   return (
-    <div className="meta-item">
-      <span className="meta-label">{label}</span>
-      <span className={`meta-value${mono ? " mono" : ""}`}>{value ?? "—"}</span>
+    <div style={{ minWidth: 0 }}>
+      <div style={{
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: 9, letterSpacing: 1.2, color: 'rgba(232,236,246,0.45)',
+        textTransform: 'uppercase',
+      }}>{l}</div>
+      <div style={{
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: 12, color: '#e8ecf6', fontVariantNumeric: 'tabular-nums',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{v}</div>
+    </div>
+  );
+}
+
+function ChartCol({ title, children }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+      <div style={{ ...KICKER, color: 'rgba(232,236,246,0.7)', marginBottom: 6 }}>
+        {title}
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>{children}</div>
     </div>
   );
 }

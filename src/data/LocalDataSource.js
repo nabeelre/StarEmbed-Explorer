@@ -73,7 +73,7 @@ export class LocalDataSource extends DataSource {
     const SKY_SAMPLE = 10_000; // see HFDiskDataSource for rationale
     const skyPoints = [];
     const allCoords = rows
-      .map((r) => ({ ra: r.gaia_dr3_ra, dec: r.gaia_dr3_dec }))
+      .map((r) => ({ ra: r.gaia_dr3_ra, dec: r.gaia_dr3_dec, cls: r.class_str ?? '(none)' }))
       .filter((p) => p.ra != null && p.dec != null);
     if (allCoords.length <= SKY_SAMPLE) {
       skyPoints.push(...allCoords);
