@@ -155,7 +155,7 @@ export default function SkyMapCanvas({ skyPoints = [], currentRow, enabledClasse
       }
 
       // Dec labels — RA 180.001° maps to the left edge (lambda ≈ −π)
-      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.font = '12px "JetBrains Mono", monospace';
       ctx.fillStyle = 'rgba(255,255,255,0.45)';
       ctx.textAlign = 'right';
       for (const d of [-60, -30, 0, 30, 60]) {

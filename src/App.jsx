@@ -17,7 +17,7 @@ const GLASS = {
 
 const KICKER = {
   fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-  fontSize: 9.5,
+  fontSize: 14,
   letterSpacing: 1.4,
   textTransform: 'uppercase',
   color: 'rgba(232,236,246,0.55)',
@@ -100,7 +100,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterOpen, setFilterOpen] = useState(true);
-  const [bottomH, setBottomH] = useState(280);
+  const [bottomH, setBottomH] = useState(504);
   const [activeBands, setActiveBands] = useState(null);
 
   const containerRef = useRef(null);
@@ -248,8 +248,8 @@ export default function App() {
         fontFamily: "'Inter Tight', 'Inter', system-ui, sans-serif",
       }}
     >
-      {/* ── Layer 1: Sky map ── */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+      {/* ── Layer 1: Sky map (top 2/3 of viewport) ── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '66.6667vh', zIndex: 1 }}>
         <SkyMapCanvas
           skyPoints={summary?.skyPoints ?? []}
           currentRow={row}
@@ -264,28 +264,14 @@ export default function App() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 22px',
       }}>
-        {/* Logo + wordmark */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-            <defs>
-              <radialGradient id="see-logo-g" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#dfe7ff" />
-                <stop offset="100%" stopColor="#7da9ff" />
-              </radialGradient>
-            </defs>
-            <circle cx="10" cy="10" r="2.4" fill="url(#see-logo-g)" />
-            <circle cx="10" cy="10" r="7" fill="none" stroke="#7da9ff"
-              strokeWidth="0.8" strokeOpacity="0.5" />
-            <ellipse cx="10" cy="10" rx="8.8" ry="3" fill="none"
-              stroke="#ff8a72" strokeWidth="0.5" strokeOpacity="0.55"
-              transform="rotate(20 10 10)" />
-          </svg>
-          <span style={{ fontWeight: 600, fontSize: 14, letterSpacing: -0.2 }}>
+        {/* Wordmark */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontWeight: 600, fontSize: 44, letterSpacing: -0.2, color: ACCENT }}>
             StarEmbed Explorer
           </span>
           <span style={{
-            fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
-            color: 'rgba(232,236,246,0.5)', letterSpacing: 1.2,
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 19,
+            color: ACCENT, opacity: 0.7, letterSpacing: 1.2,
           }}>SEE</span>
         </div>
 
@@ -295,10 +281,10 @@ export default function App() {
             value={dataset.id}
             onChange={(e) => setDataset(datasets.find((d) => d.id === e.target.value))}
             style={{
-              padding: '6px 11px', borderRadius: 7,
+              padding: '9px 17px', borderRadius: 9,
               border: '1px solid rgba(125,169,255,0.2)',
               background: 'rgba(125,169,255,0.08)',
-              color: '#e8ecf6', fontSize: 12, cursor: 'pointer',
+              color: '#e8ecf6', fontSize: 18, cursor: 'pointer',
               fontFamily: "'Inter Tight', system-ui, sans-serif",
             }}
           >
@@ -311,10 +297,10 @@ export default function App() {
           <button
             onClick={() => dirInputRef.current.click()}
             style={{
-              padding: '6px 11px', borderRadius: 7,
+              padding: '9px 17px', borderRadius: 9,
               border: '1px solid rgba(232,236,246,0.15)',
               background: 'transparent', color: '#e8ecf6',
-              fontSize: 12, cursor: 'pointer',
+              fontSize: 18, cursor: 'pointer',
             }}
           >
             Open HF dataset ↗
@@ -329,11 +315,11 @@ export default function App() {
       {/* ── Dataset card (top-left) ── */}
       {summary && (
         <div style={{
-          position: 'absolute', top: 64, left: 22, zIndex: 5,
-          ...GLASS, padding: '14px 18px', minWidth: 220,
+          position: 'absolute', top: 100, left: 22, zIndex: 5,
+          ...GLASS, padding: '14px 18px', minWidth: 286,
         }}>
           <div style={KICKER}>Dataset</div>
-          <div style={{ fontSize: 20, fontWeight: 600, letterSpacing: -0.4,
+          <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: -0.4,
             marginTop: 2, marginBottom: 12, wordBreak: 'break-all' }}>
             {datasetName}
           </div>
@@ -344,7 +330,7 @@ export default function App() {
           {bands.length > 0 && (
             <div style={{
               marginTop: 10, fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 10.5, color: 'rgba(232,236,246,0.5)', letterSpacing: 1.1,
+              fontSize: 13, color: 'rgba(232,236,246,0.5)', letterSpacing: 1.1,
             }}>
               BANDS ·{' '}
               {bands.map((b, i) => (
@@ -357,13 +343,16 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Class filter (top-right, collapsible) ── */}
+      {/* ── Class filter + Random (top-right) ── */}
       {classes.length > 0 && (
         <div style={{
-          position: 'absolute', top: 64, right: 22, zIndex: 5,
+          position: 'absolute', top: 100, right: 22, zIndex: 5,
+          display: 'flex', flexDirection: 'column', gap: 10,
+          width: 340,
+        }}>
+        <div style={{
           ...GLASS,
           padding: filterOpen ? '14px 16px' : '10px 14px',
-          width: filterOpen ? 280 : 'auto',
           transition: 'width 0.18s',
         }}>
           {/* Header row */}
@@ -393,7 +382,7 @@ export default function App() {
                 onClick={() => toggleAllClasses(!allClassesOn)}
                 style={{
                   border: 'none', background: 'transparent', color: ACCENT,
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 10,
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 15,
                   letterSpacing: 1.1, textTransform: 'uppercase', cursor: 'pointer', padding: 0,
                 }}
               >
@@ -418,11 +407,11 @@ export default function App() {
                     onClick={() => toggleClass(c.id)}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '14px 1fr 1fr 54px 38px',
+                      gridTemplateColumns: '16px 1fr 1fr 76px 60px',
                       alignItems: 'center', gap: 8,
                       border: 'none', background: 'transparent',
-                      padding: '2px 0', cursor: 'pointer', textAlign: 'left',
-                      fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                      padding: '3px 0', cursor: 'pointer', textAlign: 'left',
+                      fontFamily: 'JetBrains Mono, monospace', fontSize: 17,
                       color: '#e8ecf6', opacity: isOn ? 1 : 0.42,
                       transition: 'opacity 0.15s',
                     }}
@@ -472,6 +461,32 @@ export default function App() {
             </div>
           )}
         </div>
+
+        <button
+          onClick={pickRandom}
+          disabled={loading}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', gap: 10,
+            padding: '14px 20px', borderRadius: 12, border: 'none',
+            background: `linear-gradient(180deg, ${ACCENT} 0%, #5a8aff 100%)`,
+            color: '#0a0e1a',
+            fontFamily: 'JetBrains Mono, monospace', fontSize: 18,
+            fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase',
+            cursor: loading ? 'default' : 'pointer',
+            opacity: loading ? 0.5 : 1,
+            boxShadow: '0 8px 28px rgba(125,169,255,0.4), inset 0 1px 0 rgba(255,255,255,0.35)',
+            transition: 'opacity 0.15s, transform 0.08s',
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 13 13" fill="none"
+            stroke="currentColor" strokeWidth="1.6"
+            strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3.5h3l5 6h3M2 9.5h3l1.5-1.8M9 8.5l3 1L11 12.5" />
+          </svg>
+          Random star
+        </button>
+      </div>
       )}
 
       {/* ── Band toggle pill (floating above drawer) ── */}
@@ -490,17 +505,17 @@ export default function App() {
                 key={b}
                 onClick={() => toggleBand(b)}
                 style={{
-                  padding: '4px 11px', borderRadius: 999, border: 'none',
+                  padding: '8px 18px', borderRadius: 999, border: 'none',
                   background: isOn ? color + '22' : 'transparent',
                   color: '#e8ecf6', opacity: isOn ? 1 : 0.4,
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 16,
                   fontWeight: 600, cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
                   transition: 'opacity 0.15s, background 0.15s',
                 }}
               >
                 <span style={{
-                  width: 7, height: 7, borderRadius: 4,
+                  width: 10, height: 10, borderRadius: 5,
                   background: color, flexShrink: 0,
                 }} />
                 {b}
@@ -532,43 +547,21 @@ export default function App() {
               display: 'flex', flexDirection: 'column',
               minWidth: 0, overflowY: 'auto',
             }}>
-              {/* Header: kicker + class chip + RANDOM */}
+              {/* Header: kicker + class chip */}
               <div style={{
-                display: 'flex', alignItems: 'center',
-                justifyContent: 'space-between', marginBottom: 6,
+                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={KICKER}>Gaia DR3</span>
-                  <span style={{
-                    fontSize: 10, padding: '2px 7px', borderRadius: 4,
-                    background: clsColor, color: '#0b0f1c',
-                    fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, letterSpacing: 0.4,
-                  }}>{cls}</span>
-                </div>
-                <button
-                  onClick={pickRandom}
-                  disabled={loading}
-                  style={{
-                    border: 'none', background: 'transparent', color: ACCENT,
-                    cursor: loading ? 'default' : 'pointer',
-                    padding: '3px 5px', borderRadius: 5, opacity: loading ? 0.45 : 1,
-                    display: 'inline-flex', alignItems: 'center', gap: 5,
-                    fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, letterSpacing: 0.6,
-                    transition: 'opacity 0.15s',
-                  }}
-                >
-                  <svg width="11" height="11" viewBox="0 0 13 13" fill="none"
-                    stroke="currentColor" strokeWidth="1.4"
-                    strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2 3.5h3l5 6h3M2 9.5h3l1.5-1.8M9 8.5l3 1L11 12.5" />
-                  </svg>
-                  RANDOM
-                </button>
+                <span style={KICKER}>Gaia DR3</span>
+                <span style={{
+                  fontSize: 16, padding: '3px 10px', borderRadius: 4,
+                  background: clsColor, color: '#0b0f1c',
+                  fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, letterSpacing: 0.4,
+                }}>{cls}</span>
               </div>
 
               {/* Star ID */}
               <div style={{
-                fontFamily: 'JetBrains Mono, monospace', fontSize: 15,
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 24,
                 fontWeight: 500, letterSpacing: -0.3,
                 wordBreak: 'break-all', lineHeight: 1.3, marginBottom: 14,
               }}>
@@ -595,7 +588,7 @@ export default function App() {
                 <KV l="RV"
                   v={row.radial_velocity != null
                     ? row.radial_velocity.toFixed(2) + ' km/s' : '—'} />
-                <KV l="PTF ID" v={row.sourceid ?? '—'} />
+                <KV l={`${datasetName} ID`} v={row.sourceid ?? '—'} />
               </div>
             </div>
 
@@ -679,12 +672,12 @@ function StatBlock({ n, l }) {
   return (
     <div>
       <div style={{
-        fontSize: 16, fontWeight: 600, color: '#e8ecf6',
+        fontSize: 20, fontWeight: 600, color: '#e8ecf6',
         fontVariantNumeric: 'tabular-nums',
         fontFamily: 'JetBrains Mono, monospace',
       }}>{n}</div>
       <div style={{
-        fontSize: 9, letterSpacing: 1.3, color: 'rgba(232,236,246,0.5)',
+        fontSize: 12, letterSpacing: 1.3, color: 'rgba(232,236,246,0.5)',
         textTransform: 'uppercase', marginTop: 2,
         fontFamily: 'JetBrains Mono, monospace',
       }}>{l}</div>
@@ -697,12 +690,12 @@ function KV({ l, v }) {
     <div style={{ minWidth: 0 }}>
       <div style={{
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: 9, letterSpacing: 1.2, color: 'rgba(232,236,246,0.45)',
+        fontSize: 14, letterSpacing: 1.2, color: 'rgba(232,236,246,0.45)',
         textTransform: 'uppercase',
       }}>{l}</div>
       <div style={{
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: 12, color: '#e8ecf6', fontVariantNumeric: 'tabular-nums',
+        fontSize: 18, color: '#e8ecf6', fontVariantNumeric: 'tabular-nums',
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>{v}</div>
     </div>
