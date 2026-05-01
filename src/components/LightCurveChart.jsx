@@ -72,8 +72,11 @@ export default function LightCurveChart({ row, mode = 'raw', bandColors = {}, ac
 
   const [wrapRef, { w, h }] = useSize();
 
-  if (mode === 'phase' && !period) return <Empty msg="No period" />;
-  if (!traces.length) return <Empty msg="No observations" />;
+  const noData = (mode === 'phase' && !period)
+    ? 'No period'
+    : !traces.length
+      ? 'No observations'
+      : null;
 
   const layout = {
     width: w || undefined,
@@ -123,7 +126,9 @@ export default function LightCurveChart({ row, mode = 'raw', bandColors = {}, ac
 
   return (
     <div ref={wrapRef} style={{ width: '100%', height: '100%' }}>
-      {w > 0 && h > 0 && (
+      {noData ? (
+        <Empty msg={noData} />
+      ) : w > 0 && h > 0 && (
         <Plot
           data={traces}
           layout={layout}

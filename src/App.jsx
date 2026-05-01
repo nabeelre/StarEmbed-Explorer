@@ -333,14 +333,14 @@ export default function App() {
                   gap: 8, marginBottom: 3,
                 }}>
                   <span style={{
-                    fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+                    fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
                     letterSpacing: 1.2, textTransform: 'uppercase',
-                    color: 'rgba(232,236,246,0.35)', minWidth: 30, flexShrink: 0,
+                    color: '#e8ecf6', minWidth: 30, flexShrink: 0,
                   }}>{survey}</span>
                   <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {surveyBands.map((b) => (
                       <span key={b.key} style={{
-                        fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
+                        fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
                         letterSpacing: 0.4, color: b.color,
                       }}>{b.label}</span>
                     ))}
@@ -502,7 +502,7 @@ export default function App() {
       {bandGroups.length > 0 && (
         <div style={{
           position: 'absolute', bottom: bottomH + 28,
-          left: '50%', transform: 'translateX(-50%)',
+          left: 22,
           zIndex: 6, display: 'flex', alignItems: 'stretch', gap: 0,
           padding: '4px 6px',
           ...GLASS, borderRadius: 999,
@@ -520,9 +520,9 @@ export default function App() {
                 alignItems: 'center', gap: 2, padding: '2px 4px',
               }}>
                 <span style={{
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
                   letterSpacing: 1.4, textTransform: 'uppercase',
-                  color: 'rgba(232,236,246,0.4)', lineHeight: 1,
+                  color: '#e8ecf6', lineHeight: 1,
                 }}>{survey}</span>
                 <div style={{ display: 'flex', gap: 2 }}>
                   {surveyBands.map((b) => {
