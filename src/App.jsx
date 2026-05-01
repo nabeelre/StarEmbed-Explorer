@@ -3,6 +3,7 @@ import { createDataSource } from './data';
 import { DATASETS } from './datasets.js';
 import SkyMapCanvas from './components/SkyMapCanvas.jsx';
 import LightCurveChart from './components/LightCurveChart.jsx';
+import { buildBandColors, groupBandsBySurvey } from './bands.js';
 
 // ── Design tokens ─────────────────────────────────────────────
 
@@ -36,10 +37,6 @@ const FALLBACK_COLORS = [
   '#7da9ff', '#f0a02b', '#3bbd8e', '#c45ad8',
   '#ffd166', '#5dd6e6', '#ff8a72', '#9c8cff', '#e8c77a', '#a4c9b0',
 ];
-const BAND_PALETTE = [
-  '#7da9ff', '#ff8a72', '#9c8cff', '#3bbd8e', '#ffd166', '#5dd6e6',
-];
-
 function buildClassColors(classCounts) {
   if (!classCounts) return {};
   const colors = {};
@@ -48,11 +45,6 @@ function buildClassColors(classCounts) {
     colors[cls] = CLASS_COLOR_HINTS[cls] ?? FALLBACK_COLORS[fi++ % FALLBACK_COLORS.length];
   }
   return colors;
-}
-
-function buildBandColors(bands) {
-  if (!bands) return {};
-  return Object.fromEntries(bands.map((b, i) => [b, BAND_PALETTE[i % BAND_PALETTE.length]]));
 }
 
 function randomIdx(classIndices, enabledClasses) {
@@ -218,6 +210,7 @@ export default function App() {
   // Derived display data — all dynamic, nothing hardcoded.
   const classColors = useMemo(() => buildClassColors(summary?.classCounts), [summary]);
   const bandColors = useMemo(() => buildBandColors(summary?.bands), [summary]);
+  const bandGroups = useMemo(() => groupBandsBySurvey(summary?.bands ?? []), [summary]);
 
   const classes = useMemo(() => {
     if (!summary?.classCounts) return [];
@@ -327,16 +320,32 @@ export default function App() {
             <StatBlock n={summary.totalRows.toLocaleString()} l="STARS" />
             <StatBlock n={classes.length} l="CLASSES" />
           </div>
-          {bands.length > 0 && (
-            <div style={{
-              marginTop: 10, fontFamily: 'JetBrains Mono, monospace',
-              fontSize: 13, color: 'rgba(232,236,246,0.5)', letterSpacing: 1.1,
-            }}>
-              BANDS ·{' '}
-              {bands.map((b, i) => (
-                <span key={b} style={{ color: bandColors[b] }}>
-                  {i > 0 ? ' · ' : ''}{b}
-                </span>
+          {bandGroups.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
+                letterSpacing: 1.4, textTransform: 'uppercase',
+                color: 'rgba(232,236,246,0.35)', marginBottom: 5,
+              }}>Bands</div>
+              {bandGroups.map(({ survey, bands: surveyBands }) => (
+                <div key={survey} style={{
+                  display: 'flex', alignItems: 'baseline',
+                  gap: 8, marginBottom: 3,
+                }}>
+                  <span style={{
+                    fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+                    letterSpacing: 1.2, textTransform: 'uppercase',
+                    color: 'rgba(232,236,246,0.35)', minWidth: 30, flexShrink: 0,
+                  }}>{survey}</span>
+                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {surveyBands.map((b) => (
+                      <span key={b.key} style={{
+                        fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5,
+                        letterSpacing: 0.4, color: b.color,
+                      }}>{b.label}</span>
+                    ))}
+                  </span>
+                </div>
               ))}
             </div>
           )}
@@ -489,39 +498,61 @@ export default function App() {
       </div>
       )}
 
-      {/* ── Band toggle pill (floating above drawer) ── */}
-      {bands.length > 0 && (
+      {/* ── Band toggle pill (floating above drawer, grouped by survey) ── */}
+      {bandGroups.length > 0 && (
         <div style={{
           position: 'absolute', bottom: bottomH + 28,
           left: '50%', transform: 'translateX(-50%)',
-          zIndex: 6, display: 'flex', gap: 6, padding: 5,
+          zIndex: 6, display: 'flex', alignItems: 'stretch', gap: 0,
+          padding: '4px 6px',
           ...GLASS, borderRadius: 999,
         }}>
-          {bands.map((b) => {
-            const isOn = !activeBands || activeBands.has(b);
-            const color = bandColors[b] || ACCENT;
-            return (
-              <button
-                key={b}
-                onClick={() => toggleBand(b)}
-                style={{
-                  padding: '8px 18px', borderRadius: 999, border: 'none',
-                  background: isOn ? color + '22' : 'transparent',
-                  color: '#e8ecf6', opacity: isOn ? 1 : 0.4,
-                  fontFamily: 'JetBrains Mono, monospace', fontSize: 16,
-                  fontWeight: 600, cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  transition: 'opacity 0.15s, background 0.15s',
-                }}
-              >
-                <span style={{
-                  width: 10, height: 10, borderRadius: 5,
-                  background: color, flexShrink: 0,
+          {bandGroups.map(({ survey, bands: surveyBands }, gi) => (
+            <div key={survey} style={{ display: 'contents' }}>
+              {gi > 0 && (
+                <div style={{
+                  width: 1, background: 'rgba(125,169,255,0.18)',
+                  margin: '4px 6px', alignSelf: 'stretch',
                 }} />
-                {b}
-              </button>
-            );
-          })}
+              )}
+              <div style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', gap: 2, padding: '2px 4px',
+              }}>
+                <span style={{
+                  fontFamily: 'JetBrains Mono, monospace', fontSize: 8,
+                  letterSpacing: 1.4, textTransform: 'uppercase',
+                  color: 'rgba(232,236,246,0.4)', lineHeight: 1,
+                }}>{survey}</span>
+                <div style={{ display: 'flex', gap: 2 }}>
+                  {surveyBands.map((b) => {
+                    const isOn = !activeBands || activeBands.has(b.key);
+                    return (
+                      <button
+                        key={b.key}
+                        onClick={() => toggleBand(b.key)}
+                        style={{
+                          padding: '4px 10px', borderRadius: 999, border: 'none',
+                          background: isOn ? b.color + '22' : 'transparent',
+                          color: '#e8ecf6', opacity: isOn ? 1 : 0.35,
+                          fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
+                          fontWeight: 600, cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          transition: 'opacity 0.15s, background 0.15s',
+                        }}
+                      >
+                        <span style={{
+                          width: 6, height: 6, borderRadius: 3,
+                          background: b.color, flexShrink: 0,
+                        }} />
+                        {b.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
