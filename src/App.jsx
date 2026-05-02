@@ -61,6 +61,28 @@ function randomIdx(classIndices, enabledClasses) {
   return null;
 }
 
+// Detects a deployed build (vite sets BASE_URL to "/<repo>/" via build:gh).
+// Used to disable the "Select local dataset" picker since the browser file
+// API can't read into the bundled site directory anyway.
+const IS_DEPLOYED = import.meta.env.BASE_URL !== '/';
+
+// Lets visitors point a deployed (e.g. GitHub Pages) build at any public HF
+// dataset via ?dataset=user/name (with optional ?config, ?split, ?label).
+// Returns null on missing or malformed input so the app falls back to DATASETS.
+function descriptorFromURL() {
+  const p = new URLSearchParams(window.location.search);
+  const dataset = p.get('dataset');
+  if (!dataset || !/^[\w.-]+\/[\w.-]+$/.test(dataset)) return null;
+  return {
+    id: `url::${dataset}`,
+    label: p.get('label') || dataset,
+    source: 'hf',
+    dataset,
+    config: p.get('config') || 'default',
+    split: p.get('split') || 'train',
+  };
+}
+
 // ── Error boundary ─────────────────────────────────────────────
 
 class ErrorBoundary extends Component {
@@ -82,8 +104,14 @@ class ErrorBoundary extends Component {
 // ── Main App ───────────────────────────────────────────────────
 
 export default function App() {
-  const [datasets, setDatasets] = useState(DATASETS);
-  const [dataset, setDataset] = useState(DATASETS[0]);
+  const [datasets, setDatasets] = useState(() => {
+    const url = descriptorFromURL();
+    return url ? [url, ...DATASETS] : DATASETS;
+  });
+  const [dataset, setDataset] = useState(() => {
+    const url = descriptorFromURL();
+    return url ?? DATASETS[0];
+  });
   const [info, setInfo] = useState(null);
   const [summary, setSummary] = useState(null);
   const [enabledClasses, setEnabledClasses] = useState(null);
@@ -289,14 +317,17 @@ export default function App() {
           </select>
           <button
             onClick={() => dirInputRef.current.click()}
+            disabled={IS_DEPLOYED}
+            title={IS_DEPLOYED ? 'Local datasets are only available when self-hosting' : undefined}
             style={{
               padding: '9px 17px', borderRadius: 9,
               border: '1px solid rgba(232,236,246,0.15)',
               background: 'transparent', color: '#e8ecf6',
-              fontSize: 18, cursor: 'pointer',
+              fontSize: 18, cursor: IS_DEPLOYED ? 'not-allowed' : 'pointer',
+              opacity: IS_DEPLOYED ? 0.4 : 1,
             }}
           >
-            Open HF dataset ↗
+            Select local dataset
           </button>
           <input
             ref={dirInputRef} type="file" webkitdirectory=""
@@ -311,7 +342,9 @@ export default function App() {
           position: 'absolute', top: 100, left: 22, zIndex: 5,
           ...GLASS, padding: '14px 18px', minWidth: 286,
         }}>
-          <div style={KICKER}>Dataset</div>
+          <div style={KICKER}>
+            {dataset.source === 'hf' ? 'Remote dataset' : 'Local dataset'}
+          </div>
           <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: -0.4,
             marginTop: 2, marginBottom: 12, wordBreak: 'break-all' }}>
             {datasetName}
@@ -320,35 +353,6 @@ export default function App() {
             <StatBlock n={summary.totalRows.toLocaleString()} l="STARS" />
             <StatBlock n={classes.length} l="CLASSES" />
           </div>
-          {bandGroups.length > 0 && (
-            <div style={{ marginTop: 10 }}>
-              <div style={{
-                fontFamily: 'JetBrains Mono, monospace', fontSize: 9,
-                letterSpacing: 1.4, textTransform: 'uppercase',
-                color: 'rgba(232,236,246,0.35)', marginBottom: 5,
-              }}>Bands</div>
-              {bandGroups.map(({ survey, bands: surveyBands }) => (
-                <div key={survey} style={{
-                  display: 'flex', alignItems: 'baseline',
-                  gap: 8, marginBottom: 3,
-                }}>
-                  <span style={{
-                    fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
-                    letterSpacing: 1.2, textTransform: 'uppercase',
-                    color: '#e8ecf6', minWidth: 30, flexShrink: 0,
-                  }}>{survey}</span>
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {surveyBands.map((b) => (
-                      <span key={b.key} style={{
-                        fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
-                        letterSpacing: 0.4, color: b.color,
-                      }}>{b.label}</span>
-                    ))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

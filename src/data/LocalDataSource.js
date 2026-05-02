@@ -1,4 +1,5 @@
 import { DataSource } from "./DataSource.js";
+import { sampleSkyPointsByClass } from "./HFDiskDataSource.js";
 
 /**
  * Reads a JSON Lines file from the public/ folder at runtime.
@@ -59,45 +60,30 @@ export class LocalDataSource extends DataSource {
   async getSummary() {
     const rows = await this._load();
     const classIndices = {};
+    const classCoords = new Map();
     const bandSet = new Set();
     for (let i = 0; i < rows.length; i++) {
       const cls = rows[i].class_str ?? "(none)";
       if (!classIndices[cls]) classIndices[cls] = [];
       classIndices[cls].push(i);
+      const ra = rows[i].gaia_dr3_ra;
+      const dec = rows[i].gaia_dr3_dec;
+      if (ra != null && dec != null) {
+        if (!classCoords.has(cls)) classCoords.set(cls, []);
+        classCoords.get(cls).push({ ra, dec });
+      }
       if (rows[i].lightcurve) {
         for (const band of Object.keys(rows[i].lightcurve)) bandSet.add(band);
       }
     }
     const sorted = Object.entries(classIndices).sort((a, b) => b[1].length - a[1].length);
 
-    const SKY_SAMPLE = 10_000; // see HFDiskDataSource for rationale
-    const skyPoints = [];
-    const allCoords = rows
-      .map((r) => ({ ra: r.gaia_dr3_ra, dec: r.gaia_dr3_dec, cls: r.class_str ?? '(none)' }))
-      .filter((p) => p.ra != null && p.dec != null);
-    if (allCoords.length <= SKY_SAMPLE) {
-      skyPoints.push(...allCoords);
-    } else {
-      const indices = Array.from({ length: allCoords.length }, (_, i) => i);
-      for (let i = 0; i < SKY_SAMPLE; i++) {
-        const j = i + Math.floor(Math.random() * (allCoords.length - i));
-        [indices[i], indices[j]] = [indices[j], indices[i]];
-        skyPoints.push(allCoords[indices[i]]);
-      }
-    }
-
     return {
       totalRows: rows.length,
       classCounts: Object.fromEntries(sorted.map(([k, v]) => [k, v.length])),
       classIndices: Object.fromEntries(sorted),
       bands: [...bandSet],
-      skyPoints,
+      skyPoints: sampleSkyPointsByClass(classCoords),
     };
   }
-}
-
-function sortedCounts(obj) {
-  return Object.fromEntries(
-    Object.entries(obj).sort((a, b) => b[1] - a[1])
-  );
 }

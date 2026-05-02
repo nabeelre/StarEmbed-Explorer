@@ -26,7 +26,7 @@ export const SURVEY_LIBRARY = [
   {
     survey: 'CSS',
     bands: [
-      { key: 'clear',  label: 'clear', color: '#c8d4e8' },
+      { key: 'clear_CSS', label: 'clear', color: '#c8d4e8' },
     ],
   },
 ];

@@ -13,17 +13,16 @@
 export const DATASETS = [
   {
     id: "ptf-north-local",
-    label: "PTF North — local",
+    label: "PTF North",
     source: "local",
     path: "data/ptf_north.jsonl",
   },
-  // Example HuggingFace entry — fill in dataset and uncomment to enable:
-  // {
-  //   id: "ptf-north-hf",
-  //   label: "PTF North — HuggingFace",
-  //   source: "hf",
-  //   dataset: "your-username/ptf-north",
-  //   config: "default",
-  //   split: "train",
-  // },
+  {
+    id: "se-test-hf",
+    label: "SE test",
+    source: "hf",
+    dataset: "nabeelr/SE_test",
+    config: "default",
+    split: "train",
+  },
 ];

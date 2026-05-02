@@ -26,6 +26,7 @@ export class HFDataSource extends DataSource {
     this.config = config;
     this.split = split;
     this._infoCache = null;
+    this._summaryCache = undefined; // distinct from null: caches the "no summary" answer too
   }
 
   _qs(params) {
@@ -84,5 +85,35 @@ export class HFDataSource extends DataSource {
     }
 
     return collected;
+  }
+
+  // Fetches a pre-computed summary.json from the dataset repo. Build/upload via
+  // scripts/build_summary.py. Returns null gracefully if absent so the app
+  // degrades to global random sampling without sky map or class filter.
+  async getSummary() {
+    if (this._summaryCache !== undefined) return this._summaryCache;
+    const url = `https://huggingface.co/datasets/${this.dataset}/resolve/main/summary.json`;
+    try {
+      const res = await fetch(url);
+      if (res.status === 404) {
+        this._summaryCache = null;
+        return null;
+      }
+      if (!res.ok) {
+        throw new Error(`summary.json fetch failed: ${res.status} ${res.statusText}`);
+      }
+      const data = await res.json();
+      if (data.version !== 1) {
+        console.warn("HF summary: unsupported version", data.version);
+        this._summaryCache = null;
+        return null;
+      }
+      this._summaryCache = data;
+      return data;
+    } catch (e) {
+      console.warn("HF summary unavailable:", e.message);
+      this._summaryCache = null;
+      return null;
+    }
   }
 }

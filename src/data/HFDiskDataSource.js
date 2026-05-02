@@ -48,9 +48,7 @@ export class HFDiskDataSource extends DataSource {
       }
       const counts = [];
       const classIndices = new Map(); // class → global row indices
-      const skyRa = [];
-      const skyDec = [];
-      const skyCls = [];
+      const classCoords = new Map();  // class → array of {ra, dec}
       let bands = null;
       let globalIdx = 0;
 
@@ -65,23 +63,20 @@ export class HFDiskDataSource extends DataSource {
           if (lcField) bands = lcField.type.children.map((f) => f.name);
         }
 
-        // Build class index and collect RA/Dec in one columnar pass
+        // Build class index and bucket RA/Dec by class in one columnar pass
         const classCol = table.getChild("class_str");
         const raCol = table.getChild("gaia_dr3_ra");
         const decCol = table.getChild("gaia_dr3_dec");
         for (let i = 0; i < table.numRows; i++) {
-          if (classCol) {
-            const key = classCol.get(i) ?? "(none)";
-            if (!classIndices.has(key)) classIndices.set(key, []);
-            classIndices.get(key).push(globalIdx);
-          }
+          const key = classCol ? (classCol.get(i) ?? "(none)") : "(none)";
+          if (!classIndices.has(key)) classIndices.set(key, []);
+          classIndices.get(key).push(globalIdx);
           if (raCol && decCol) {
             const ra = raCol.get(i);
             const dec = decCol.get(i);
             if (ra != null && dec != null) {
-              skyRa.push(ra);
-              skyDec.push(dec);
-              skyCls.push(classCol ? (classCol.get(i) ?? '(none)') : '(none)');
+              if (!classCoords.has(key)) classCoords.set(key, []);
+              classCoords.get(key).push({ ra, dec });
             }
           }
           globalIdx++;
@@ -96,22 +91,7 @@ export class HFDiskDataSource extends DataSource {
         (a, b) => b[1].length - a[1].length
       );
 
-      // Random sample of up to SKY_SAMPLE sky positions (Fisher-Yates partial shuffle).
-      // scattergeo renders in SVG (not WebGL), so render time scales ~linearly with
-      // point count. 10k is comfortable on desktop; go higher only with scattergl.
-      const SKY_SAMPLE = 10_000;
-      const skyPoints = [];
-      const n = skyRa.length;
-      if (n <= SKY_SAMPLE) {
-        for (let i = 0; i < n; i++) skyPoints.push({ ra: skyRa[i], dec: skyDec[i], cls: skyCls[i] });
-      } else {
-        const indices = Array.from({ length: n }, (_, i) => i);
-        for (let i = 0; i < SKY_SAMPLE; i++) {
-          const j = i + Math.floor(Math.random() * (n - i));
-          [indices[i], indices[j]] = [indices[j], indices[i]];
-          skyPoints.push({ ra: skyRa[indices[i]], dec: skyDec[indices[i]], cls: skyCls[indices[i]] });
-        }
-      }
+      const skyPoints = sampleSkyPointsByClass(classCoords);
 
       this._summary = {
         totalRows: this._totalRows,
@@ -188,6 +168,38 @@ export class HFDiskDataSource extends DataSource {
     this._cachedShard = { idx, table };
     return table;
   }
+}
+
+// ── Sky-point sampling ─────────────────────────────────────────────────────
+
+// Class-balanced sampling: each class gets at least SKY_FLOOR points (or all
+// of them if fewer), plus a proportional share of the SKY_SAMPLE budget.
+// scattergeo renders in SVG so render time scales ~linearly with point count;
+// 10k is comfortable on desktop. Total may slightly exceed the budget when
+// many classes have <floor rows — acceptable tradeoff for visibility.
+const SKY_SAMPLE = 10_000;
+const SKY_FLOOR = 100;
+
+export function sampleSkyPointsByClass(classCoords) {
+  let total = 0;
+  for (const coords of classCoords.values()) total += coords.length;
+  if (total === 0) return [];
+
+  const out = [];
+  for (const [cls, coords] of classCoords) {
+    const n = coords.length;
+    const proportional = Math.round((n / total) * SKY_SAMPLE);
+    const target = Math.max(SKY_FLOOR, proportional);
+    const actual = Math.min(target, n);
+    const idxs = Array.from({ length: n }, (_, i) => i);
+    for (let k = 0; k < actual; k++) {
+      const j = k + Math.floor(Math.random() * (n - k));
+      [idxs[k], idxs[j]] = [idxs[j], idxs[k]];
+      const { ra, dec } = coords[idxs[k]];
+      out.push({ ra, dec, cls });
+    }
+  }
+  return out;
 }
 
 // ── Arrow → plain JS conversion ────────────────────────────────────────────
