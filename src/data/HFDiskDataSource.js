@@ -160,6 +160,24 @@ export class HFDiskDataSource extends DataSource {
     return this._summary;
   }
 
+  // Arrow ids are int64 (BigInt); compare as strings to preserve precision.
+  async findBySourceId(id) {
+    await this._scan();
+    const target = String(id).trim();
+    for (let shardIdx = 0; shardIdx < this._shards.length; shardIdx++) {
+      const table = await this._loadShard(shardIdx);
+      const idCol = table.getChild("gaia_dr3_source_id");
+      if (!idCol) return null;
+      for (let i = 0; i < table.numRows; i++) {
+        const v = idCol.get(i);
+        if (v != null && String(v) === target) {
+          return extractRow(table, table.schema.fields, i);
+        }
+      }
+    }
+    return null;
+  }
+
   async _loadShard(idx) {
     if (this._cachedShard?.idx === idx) return this._cachedShard.table;
     const file = this._shards[idx];

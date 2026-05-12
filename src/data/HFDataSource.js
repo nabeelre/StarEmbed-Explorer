@@ -87,6 +87,38 @@ export class HFDataSource extends DataSource {
     return collected;
   }
 
+  // Uses the datasets-server /filter endpoint so the lookup happens server-side
+  // at full int64 precision (gaia_dr3_source_id is 19 digits; JS Number rounds).
+  // Datasets store the id as either int64 or string; DuckDB's WHERE is type-
+  // strict, so we try the quoted-string form first then the bare-int form.
+  async findBySourceId(id) {
+    const numeric = String(id).trim();
+    if (!/^\d+$/.test(numeric)) {
+      throw new Error("Source ID must be numeric");
+    }
+    let lastErr = null;
+    for (const literal of [`'${numeric}'`, numeric]) {
+      const url = `${BASE}/filter?${this._qs({
+        dataset: this.dataset,
+        config: this.config,
+        split: this.split,
+        where: `gaia_dr3_source_id=${literal}`,
+        length: "1",
+      })}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastErr = `Search failed: ${res.status} ${res.statusText}`;
+        continue;
+      }
+      const data = await res.json();
+      const rows = (data?.rows || []).map((r) => r.row);
+      if (rows[0]) return rows[0];
+      lastErr = null;
+    }
+    if (lastErr) throw new Error(lastErr);
+    return null;
+  }
+
   // Fetches a pre-computed summary.json from the dataset repo. Build/upload via
   // scripts/build_summary.py. Returns null gracefully if absent so the app
   // degrades to global random sampling without sky map or class filter.

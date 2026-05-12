@@ -122,6 +122,8 @@ export default function App() {
   const [filterOpen, setFilterOpen] = useState(true);
   const [bottomH, setBottomH] = useState(504);
   const [activeBands, setActiveBands] = useState(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchError, setSearchError] = useState(null);
 
   const containerRef = useRef(null);
   const dsRef = useRef(null);
@@ -186,6 +188,26 @@ export default function App() {
       if (rows[0]) setCurrentRow(rows[0]);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const searchByID = async () => {
+    const id = searchInput.trim();
+    if (!id || !dsRef.current) return;
+    setLoading(true);
+    setSearchError(null);
+    setError(null);
+    try {
+      const found = await dsRef.current.findBySourceId(id);
+      if (found) {
+        setCurrentRow(found);
+      } else {
+        setSearchError(`No star with ID ${id}`);
+      }
+    } catch (err) {
+      setSearchError(err.message);
     } finally {
       setLoading(false);
     }
@@ -499,6 +521,58 @@ export default function App() {
           </svg>
           Random star
         </button>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); searchByID(); }}
+          style={{ ...GLASS, padding: '14px 16px' }}
+        >
+          <div style={{ ...KICKER, marginBottom: 8 }}>
+            Search by Gaia DR3 ID
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={searchInput}
+              onChange={(e) => { setSearchInput(e.target.value); setSearchError(null); }}
+              disabled={loading}
+              style={{
+                flex: 1, minWidth: 0,
+                padding: '8px 10px', borderRadius: 6,
+                border: '1px solid rgba(125,169,255,0.2)',
+                background: 'rgba(125,169,255,0.08)',
+                color: '#e8ecf6',
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 15,
+                letterSpacing: 0.3, outline: 'none',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={loading || !searchInput.trim()}
+              style={{
+                padding: '0 14px', borderRadius: 6,
+                border: '1px solid rgba(125,169,255,0.25)',
+                background: 'rgba(125,169,255,0.12)',
+                color: ACCENT,
+                fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
+                fontWeight: 700, letterSpacing: 1.1, textTransform: 'uppercase',
+                cursor: (loading || !searchInput.trim()) ? 'default' : 'pointer',
+                opacity: (loading || !searchInput.trim()) ? 0.45 : 1,
+              }}
+            >
+              Go
+            </button>
+          </div>
+          {searchError && (
+            <div style={{
+              marginTop: 8,
+              fontFamily: 'JetBrains Mono, monospace', fontSize: 13,
+              color: '#ff8a72', wordBreak: 'break-all',
+            }}>
+              {searchError}
+            </div>
+          )}
+        </form>
       </div>
       )}
 

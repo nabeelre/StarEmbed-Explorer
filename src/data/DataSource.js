@@ -41,4 +41,14 @@ export class DataSource {
   async getSummary() {
     return null;
   }
+
+  /**
+   * Find a row by its gaia_dr3_source_id. Returns the row object or null.
+   * @param {string|number|bigint} id
+   * @returns {Promise<object|null>}
+   */
+  // eslint-disable-next-line no-unused-vars
+  async findBySourceId(id) {
+    throw new Error("DataSource.findBySourceId not implemented");
+  }
 }

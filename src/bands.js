@@ -27,6 +27,14 @@ export const SURVEY_LIBRARY = [
     survey: 'CSS',
     bands: [
       { key: 'clear_CSS', label: 'clear', color: '#c8d4e8' },
+      { key: 'clear',     label: 'clear', color: '#c8d4e8' },
+    ],
+  },
+  {
+    survey: 'ASAS-SN',
+    bands: [
+      { key: 'g_ASASSN', label: 'g', color: '#6ee7a8' },
+      { key: 'V_ASASSN', label: 'V', color: '#f4c542' },
     ],
   },
 ];

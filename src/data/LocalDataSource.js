@@ -57,6 +57,12 @@ export class LocalDataSource extends DataSource {
     return rows.slice(offset, offset + length);
   }
 
+  async findBySourceId(id) {
+    const rows = await this._load();
+    const target = String(id).trim();
+    return rows.find((r) => String(r.gaia_dr3_source_id) === target) ?? null;
+  }
+
   async getSummary() {
     const rows = await this._load();
     const classIndices = {};
